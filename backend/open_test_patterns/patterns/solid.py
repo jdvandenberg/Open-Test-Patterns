@@ -4,15 +4,20 @@ from __future__ import annotations
 
 from typing import Any
 
+from .annotate import annotate_code_rgb
 from .base import Parameter, ParamType, Pattern, PatternResult
 from .registry import register
 from .util import (
+    authored_color,
     canvas,
+    color_params,
     colorspace_param,
     finalize,
+    finalize_authored,
     peak_luminance_param,
     range_param,
     transfer_param,
+    value_mode_param,
 )
 
 
@@ -21,15 +26,10 @@ class SolidColor(Pattern):
     id = "solid-color"
     name = "Solid Color"
     category = "Solid Fields"
-    description = "A single flat color filling the frame (linear RGB input)."
+    description = "A single flat color filling the frame."
     parameters = [
-        Parameter(
-            "color",
-            "Color (linear RGB)",
-            ParamType.COLOR,
-            default=[1.0, 1.0, 1.0],
-            description="Relative linear RGB in [0, 1].",
-        ),
+        value_mode_param(),
+        *color_params(default=[1.0, 1.0, 1.0]),
         colorspace_param(),
         transfer_param(),
         peak_luminance_param(),
@@ -38,14 +38,16 @@ class SolidColor(Pattern):
 
     def generate(self, width: int, height: int, **p: Any) -> PatternResult:
         img = canvas(width, height)
-        img[:, :, :] = p["color"]
-        return finalize(
+        img[:, :, :] = authored_color(p)
+        result = finalize_authored(
             img,
+            value_mode=p["value_mode"],
             color_space=p["color_space"],
             transfer_function=p["transfer_function"],
             peak_luminance=p["peak_luminance"],
             signal_range=p["signal_range"],
         )
+        return annotate_code_rgb(result)
 
 
 @register
@@ -74,13 +76,14 @@ class GrayField(Pattern):
     def generate(self, width: int, height: int, **p: Any) -> PatternResult:
         img = canvas(width, height)
         img[:, :, :] = p["level"]
-        return finalize(
+        result = finalize(
             img,
             color_space=p["color_space"],
             transfer_function=p["transfer_function"],
             peak_luminance=p["peak_luminance"],
             signal_range=p["signal_range"],
         )
+        return annotate_code_rgb(result)
 
 
 @register

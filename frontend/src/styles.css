@@ -272,6 +272,15 @@ input[type="text"] {
   width: 100%;
 }
 
+/* Valid range for the three linear-RGB components. */
+.color-row .range-note {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .hint {
   font-size: 11px;
   color: var(--text-dim);

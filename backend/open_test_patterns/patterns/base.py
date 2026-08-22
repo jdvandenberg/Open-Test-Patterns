@@ -86,7 +86,13 @@ class Parameter:
             arr = [float(c) for c in value]
             if len(arr) != 3:
                 raise ValueError(f"{self.name}: color must have 3 components")
-            return arr
+            # Components are relative linear light, so out-of-range values have
+            # no meaning. Clamping here rather than in the transfer functions
+            # keeps the value the UI echoes back identical to the one rendered,
+            # whichever curve is selected.
+            lo = 0.0 if self.minimum is None else self.minimum
+            hi = 1.0 if self.maximum is None else self.maximum
+            return [min(max(c, lo), hi) for c in arr]
         else:  # pragma: no cover - defensive
             return value
         if self.minimum is not None and v < self.minimum:

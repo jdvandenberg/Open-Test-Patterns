@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from ..color import colorspaces, transfer
@@ -19,6 +21,25 @@ _BYPASS_DISABLES_RANGE = DisabledWhen(
     parameter="transfer_function",
     values=("bypass",),
     reason="Bypass passes code values through untouched, so no range scaling is applied.",
+)
+
+# Colors can be authored either as relative linear light or as ready-made code
+# values. The two are different quantities, not different units, so each gets its
+# own control and only one is live at a time.
+VALUE_MODE = "value_mode"
+LINEAR_MODE = "linear"
+CODE_12BIT_MODE = "code-12bit"
+CODE_12BIT_MAX = 4095.0
+
+_LINEAR_INAPPLICABLE = DisabledWhen(
+    parameter=VALUE_MODE,
+    values=(CODE_12BIT_MODE,),
+    reason="Entering 12-bit code values, so the linear RGB input is unused.",
+)
+_CODE_INAPPLICABLE = DisabledWhen(
+    parameter=VALUE_MODE,
+    values=(LINEAR_MODE,),
+    reason="Entering linear RGB, so the 12-bit code value input is unused.",
 )
 
 
@@ -95,6 +116,104 @@ def range_param(default: SignalRange = SignalRange.FULL) -> Parameter:
         choices=[Choice("full", "Full"), Choice("legal", "Legal / narrow")],
         description="Full-range or 10-bit legal-range code values.",
         disabled_when=_BYPASS_DISABLES_RANGE,
+    )
+
+
+def value_mode_param(default: str = LINEAR_MODE) -> Parameter:
+    return Parameter(
+        name=VALUE_MODE,
+        label="Color entry",
+        type=ParamType.CHOICE,
+        default=default,
+        choices=[
+            Choice(LINEAR_MODE, "Linear RGB [0, 1]"),
+            Choice(CODE_12BIT_MODE, "12-bit code value [0, 4095]"),
+        ],
+        description=(
+            "Linear RGB is light and is passed through the transfer function. A "
+            "12-bit code value is already encoded, so it is written out unchanged "
+            "and the transfer function only records how to interpret it."
+        ),
+    )
+
+
+def color_params(
+    name: str = "color",
+    label: str = "Color",
+    default: list[float] | None = None,
+) -> list[Parameter]:
+    """Return the linear-light and 12-bit code-value controls for one color input.
+
+    Both are always declared; ``value_mode`` decides which one the generator
+    reads, and the other is greyed out.
+    """
+    linear_default = [1.0, 1.0, 1.0] if default is None else default
+    return [
+        Parameter(
+            name,
+            f"{label} (linear RGB)",
+            ParamType.COLOR,
+            default=linear_default,
+            disabled_when=_LINEAR_INAPPLICABLE,
+        ),
+        Parameter(
+            f"{name}_code",
+            f"{label} (12-bit code value)",
+            ParamType.COLOR,
+            default=[float(round(c * CODE_12BIT_MAX)) for c in linear_default],
+            minimum=0.0,
+            maximum=CODE_12BIT_MAX,
+            step=1.0,
+            disabled_when=_CODE_INAPPLICABLE,
+        ),
+    ]
+
+
+def authored_color(p: dict[str, Any], name: str = "color") -> np.ndarray:
+    """Return one color input normalised to ``[0, 1]``.
+
+    Code values are divided by full scale and rounded first, since a 12-bit code
+    value is an integer. Normalising both modes to the same range lets a
+    generator build its geometry once; :func:`finalize_authored` decides whether
+    the numbers are treated as light or as code values.
+    """
+    if p.get(VALUE_MODE, LINEAR_MODE) == CODE_12BIT_MODE:
+        code = np.asarray(p[f"{name}_code"], dtype=np.float64)
+        return np.round(code) / CODE_12BIT_MAX
+    return np.asarray(p[name], dtype=np.float64)
+
+
+def finalize_authored(
+    img: np.ndarray,
+    *,
+    value_mode: str,
+    color_space: str = "rec709",
+    transfer_function: str = "linear",
+    peak_luminance: float | None = None,
+    signal_range: str | SignalRange = SignalRange.FULL,
+) -> PatternResult:
+    """Finalize an image built from :func:`authored_color` values.
+
+    In linear mode the transfer function is applied; in code-value mode the
+    numbers are already code values and are written through untouched.
+    """
+    if value_mode == CODE_12BIT_MODE:
+        is_absolute = transfer.get_transfer_function(transfer_function).is_absolute
+        return finalize_signal(
+            img,
+            color_space=color_space,
+            transfer_function=transfer_function,
+            # Nothing is encoded here, but the preview still needs the peak to
+            # normalise absolute curves. Mirror finalize() and drop it otherwise.
+            peak_luminance=peak_luminance if is_absolute else None,
+            signal_range=signal_range,
+        )
+    return finalize(
+        img,
+        color_space=color_space,
+        transfer_function=transfer_function,
+        peak_luminance=peak_luminance,
+        signal_range=signal_range,
     )
 
 

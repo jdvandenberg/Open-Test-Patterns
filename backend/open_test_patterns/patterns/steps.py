@@ -9,13 +9,17 @@ import numpy as np
 from .base import Parameter, ParamType, Pattern, PatternResult
 from .registry import register
 from .util import (
+    authored_color,
     canvas,
+    color_params,
     colorspace_param,
     finalize,
+    finalize_authored,
     finalize_signal,
     peak_luminance_param,
     range_param,
     transfer_param,
+    value_mode_param,
 )
 
 
@@ -77,9 +81,13 @@ class PqLuminanceSteps(Pattern):
             maximum=1000.0,
             unit="cd/m²",
         ),
-        colorspace_param(default="rec2020"),
         range_param(),
     ]
+
+    # The steps are neutral, so the gamut cannot change a pixel; it would only
+    # alter the metadata tag. BT.2100 pairs PQ with BT.2020 primaries, which is
+    # what this chart is measured against.
+    color_space = "rec2020"
 
     def generate(self, width: int, height: int, **p: Any) -> PatternResult:
         steps = p["steps"]
@@ -92,7 +100,7 @@ class PqLuminanceSteps(Pattern):
             img[:, edges[i] : edges[i + 1], :] = lum
         return finalize(
             img,
-            color_space=p["color_space"],
+            color_space=self.color_space,
             transfer_function="pq",
             peak_luminance=1.0,
             signal_range=p["signal_range"],
@@ -106,13 +114,9 @@ class ColorSteps(Pattern):
     category = "Ramps & Steps"
     description = "Steps of a single color from black to full amplitude."
     parameters = [
-        Parameter(
-            "color",
-            "Color (linear RGB)",
-            ParamType.COLOR,
-            default=[1.0, 1.0, 1.0],
-        ),
         Parameter("steps", "Steps", ParamType.INT, default=10, minimum=2, maximum=64),
+        value_mode_param(),
+        *color_params(default=[1.0, 1.0, 1.0]),
         colorspace_param(),
         transfer_param(),
         peak_luminance_param(),
@@ -122,12 +126,13 @@ class ColorSteps(Pattern):
     def generate(self, width: int, height: int, **p: Any) -> PatternResult:
         img = canvas(width, height)
         steps = p["steps"]
-        color = np.asarray(p["color"], dtype=np.float64)
+        color = authored_color(p)
         edges = _column_edges(width, steps)
         for i in range(steps):
             img[:, edges[i] : edges[i + 1], :] = color * (i / (steps - 1))
-        return finalize(
+        return finalize_authored(
             img,
+            value_mode=p["value_mode"],
             color_space=p["color_space"],
             transfer_function=p["transfer_function"],
             peak_luminance=p["peak_luminance"],
