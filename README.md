@@ -9,10 +9,6 @@ plates, geometry/alignment grids, and more). It is organized as a small Python
 web application so patterns can be previewed in the browser and exported to
 production formats (OpenEXR, DPX, TIFF, PNG).
 
-The project is intended to be shared as a tool/asset contribution to the
-[Digital Production Example Library (DPEL)](https://dpel.aswf.io/), an Academy
-Software Foundation project.
-
 ## Architecture
 
 ```

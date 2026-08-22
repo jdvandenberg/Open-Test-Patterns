@@ -15,8 +15,20 @@ import OpenImageIO as oiio
 from OpenImageIO import ImageBuf, ImageBufAlgo
 
 from ..color import colorspaces, transfer
-from .base import PatternResult, SignalRange
+from .base import Parameter, ParamType, PatternResult, SignalRange
 from .util import CODE_12BIT_MAX
+
+SHOW_LABEL = "show_label"
+
+
+def show_label_param() -> Parameter:
+    return Parameter(
+        SHOW_LABEL,
+        "Show text",
+        ParamType.BOOL,
+        default=True,
+        description="12-bit RGB and expected probe luminance in the bottom-left corner.",
+    )
 
 # ~18 nits on PQ — photographic mid-grey at a 100-nit reference — and a dim
 # grey on SDR curves. Bright enough to read on a black field, dim enough not
@@ -142,6 +154,15 @@ def _draw_lines(buf: ImageBuf, lines: list[str], fontsize: int, x: int, y_last: 
         roi = ImageBufAlgo.text_size(line, fontsize)
         y -= roi.height + gap
     return True
+
+
+def maybe_annotate(
+    result: PatternResult, show: bool, sample: tuple[int, int] | None = None
+) -> PatternResult:
+    """Apply the readout only when the Show text control is on."""
+    if not show:
+        return result
+    return annotate_code_rgb(result, sample)
 
 
 def annotate_code_rgb(

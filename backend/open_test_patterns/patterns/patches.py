@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .annotate import annotate_code_rgb
+from .annotate import maybe_annotate, show_label_param
 from .base import Parameter, ParamType, Pattern, PatternResult
 from .registry import register
 from .util import (
@@ -47,6 +47,7 @@ class CenteredPatch(Pattern):
         transfer_param(),
         peak_luminance_param(),
         range_param(),
+        show_label_param(),
     ]
 
     def generate(self, width: int, height: int, **p: Any) -> PatternResult:
@@ -64,7 +65,7 @@ class CenteredPatch(Pattern):
             peak_luminance=p["peak_luminance"],
             signal_range=p["signal_range"],
         )
-        return annotate_code_rgb(result)
+        return maybe_annotate(result, p["show_label"])
 
 
 @register

@@ -7,6 +7,7 @@ import open_test_patterns.patterns as P
 from open_test_patterns.patterns.annotate import (
     DISPLAY_SYSTEMS,
     LABEL_CODE,
+    SHOW_LABEL,
     format_code_rgb,
     format_luminance_lines,
     format_nits,
@@ -151,6 +152,24 @@ def test_twelve_bit_entry_matches_the_label_numbers():
         {VALUE_MODE: CODE_12BIT_MODE, "color_code": [2048, 1024, 512]},
     )
     assert format_code_rgb(result.image[180, 320]) == "R 2048  G 1024  B 512"
+
+
+@pytest.mark.parametrize("pattern_id", LABELED)
+def test_show_text_defaults_on(pattern_id):
+    pattern = P.get_pattern(pattern_id)
+    assert pattern.resolve({})[SHOW_LABEL] is True
+
+
+@pytest.mark.parametrize("pattern_id", LABELED)
+def test_show_text_off_leaves_the_field_clean(pattern_id):
+    """Unchecking the box must not burn any overlay into the pixels."""
+    pattern = P.get_pattern(pattern_id)
+    labeled = pattern.render(640, 360, {})
+    clean = pattern.render(640, 360, {SHOW_LABEL: False})
+    assert np.any(np.abs(labeled.image[-90:, :280, 0] - LABEL_CODE) < 0.02)
+    assert not np.any(np.abs(clean.image[-90:, :280, 0] - LABEL_CODE) < 0.02)
+    # The measurement area itself is unchanged.
+    assert np.array_equal(clean.image[180, 320], labeled.image[180, 320])
 
 
 def test_tiny_frames_are_not_annotated():
