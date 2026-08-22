@@ -61,14 +61,47 @@ def _decode_srgb(code: ArrayLike) -> np.ndarray:
     return colour.models.eotf_sRGB(x)
 
 
+# colour-science evaluates both halves of the HLG piecewise curve and selects
+# with np.where, so the logarithmic branch is computed for inputs below its
+# domain and warns about the NaN it then discards. The result is unaffected.
 def _encode_hlg(linear: ArrayLike) -> np.ndarray:
     x = np.clip(np.asarray(linear, dtype=np.float64), 0.0, 1.0)
-    return np.clip(colour.models.oetf_HLG_BT2100(x), 0.0, 1.0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.clip(colour.models.oetf_BT2100_HLG(x), 0.0, 1.0)
 
 
 def _decode_hlg(code: ArrayLike) -> np.ndarray:
     x = np.clip(np.asarray(code, dtype=np.float64), 0.0, 1.0)
-    return colour.models.oetf_inverse_HLG_BT2100(x)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return colour.models.oetf_inverse_BT2100_HLG(x)
+
+
+# ACEScc and ACEScct are AP1-primaries log encodings, so they pair with the
+# ACEScg color space rather than defining a gamut of their own. colour-science
+# takes log2 of the linear input, which warns at exactly 0 before substituting
+# the curve's floor, so the benign warning is silenced at the call.
+def _encode_acescc(linear: ArrayLike) -> np.ndarray:
+    x = np.asarray(linear, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.clip(colour.models.log_encoding_ACEScc(x), 0.0, 1.0)
+
+
+def _decode_acescc(code: ArrayLike) -> np.ndarray:
+    x = np.clip(np.asarray(code, dtype=np.float64), 0.0, 1.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return colour.models.log_decoding_ACEScc(x)
+
+
+def _encode_acescct(linear: ArrayLike) -> np.ndarray:
+    x = np.asarray(linear, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.clip(colour.models.log_encoding_ACEScct(x), 0.0, 1.0)
+
+
+def _decode_acescct(code: ArrayLike) -> np.ndarray:
+    x = np.clip(np.asarray(code, dtype=np.float64), 0.0, 1.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return colour.models.log_decoding_ACEScct(x)
 
 
 def _identity(x: ArrayLike, **_: float) -> np.ndarray:
@@ -122,6 +155,27 @@ TRANSFER_FUNCTIONS: dict[str, TransferFunctionInfo] = {
         _encode_hlg,
         _decode_hlg,
         description="Hybrid Log-Gamma, scene-referred [0, 1].",
+    ),
+    "acescc": TransferFunctionInfo(
+        "acescc",
+        "ACEScc (AP1 log)",
+        _encode_acescc,
+        _decode_acescc,
+        description=(
+            "Pure logarithmic ACES encoding on AP1 primaries; pair with the "
+            "ACEScg color space. Linear 1.0 encodes to 0.5548, and black clips "
+            "because ACEScc places linear 0 below zero (-0.3584)."
+        ),
+    ),
+    "acescct": TransferFunctionInfo(
+        "acescct",
+        "ACEScct (AP1 log with toe)",
+        _encode_acescct,
+        _decode_acescct,
+        description=(
+            "As ACEScc but with a linear toe near black, so linear 0 encodes to "
+            "0.0729 and survives without clipping. Pair with ACEScg."
+        ),
     ),
     "srgb": TransferFunctionInfo(
         "srgb", "sRGB (IEC 61966-2-1)", _encode_srgb, _decode_srgb

@@ -44,8 +44,6 @@ _DEFINITIONS: list[tuple[str, str, str]] = [
     ("dci-p3", "DCI-P3 (Theater)", "DCI-P3"),
     ("aces2065-1", "ACES2065-1 (AP0)", "ACES2065-1"),
     ("acescg", "ACEScg (AP1)", "ACEScg"),
-    ("arri-wg3", "ARRI Wide Gamut 3", "ARRI Wide Gamut 3"),
-    ("arri-wg4", "ARRI Wide Gamut 4", "ARRI Wide Gamut 4"),
 ]
 
 

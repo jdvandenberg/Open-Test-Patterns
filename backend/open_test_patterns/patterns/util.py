@@ -62,6 +62,12 @@ def transfer_param(default: str = "linear", name: str = "transfer_function") -> 
 
 
 def peak_luminance_param(default: float = 100.0) -> Parameter:
+    # Only absolute transfer functions consume this, so it is disabled for every
+    # relative one. Deriving the list from the registry means a newly added
+    # absolute curve enables the control without touching this code.
+    relative_transfers = tuple(
+        tf.id for tf in transfer.list_transfer_functions() if not tf.is_absolute
+    )
     return Parameter(
         name="peak_luminance",
         label="Peak luminance",
@@ -72,6 +78,11 @@ def peak_luminance_param(default: float = 100.0) -> Parameter:
         step=1.0,
         unit="cd/m²",
         description="Absolute luminance mapped to 1.0 (used by PQ).",
+        disabled_when=DisabledWhen(
+            parameter="transfer_function",
+            values=relative_transfers,
+            reason="Only absolute transfer functions such as PQ map code values to cd/m².",
+        ),
     )
 
 
