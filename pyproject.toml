@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "open-test-patterns"
+version = "0.1.0"
+description = "Modern, extensible generator of color-accurate test patterns for display calibration and HDR/wide-gamut verification."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "JD Vandenberg", email = "jd@colorandflow.com" },
+]
+keywords = [
+    "test-patterns",
+    "color-science",
+    "hdr",
+    "display-calibration",
+    "smpte",
+    "aswf",
+    "dpel",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "colour-science>=0.4.4",
+    "OpenImageIO>=3.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/AcademySoftwareFoundation/dpel-website"
+"Digital Production Example Library" = "https://dpel.aswf.io/"
+
+[project.scripts]
+otp = "open_test_patterns.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/open_test_patterns"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["backend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+testpaths = ["tests"]

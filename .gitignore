@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Generated output
+*.exr
+*.dpx
+!tests/**/*.exr
+output/
+
+# Reference material kept locally only.
+# Standards/ holds copyrighted SMPTE documents that must not be redistributed.
+# Archive/ is the pre-rewrite source material and embeds its own git repo.
+Standards/
+Archive/
