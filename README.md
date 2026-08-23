@@ -9,6 +9,9 @@ plates, geometry/alignment grids, and more). It is organized as a small Python
 web application so patterns can be previewed in the browser and exported to
 production formats (OpenEXR, DPX, TIFF, PNG).
 
+The web UI is available at
+[https://open-test-patterns.onrender.com](https://open-test-patterns.onrender.com).
+
 ## Architecture
 
 ```
