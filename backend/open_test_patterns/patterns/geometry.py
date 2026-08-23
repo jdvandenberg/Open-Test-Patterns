@@ -1,4 +1,4 @@
-"""Geometry / alignment patterns: frame, grid, checkerboard."""
+"""Geometry / alignment patterns: frame, grid, checkerboard, center cross."""
 
 from __future__ import annotations
 
@@ -21,6 +21,18 @@ def _line_param() -> Parameter:
         maximum=1.0,
         step=0.01,
     )
+
+
+def _center_span(size: int) -> slice:
+    """Pixel slice that is exactly centered on ``size``.
+
+    An odd length has a unique middle pixel. An even length has no single
+    middle pixel, so the line is two pixels wide, straddling the midpoint.
+    """
+    mid = size // 2
+    if size % 2 == 0:
+        return slice(mid - 1, mid + 1)
+    return slice(mid, mid + 1)
 
 
 def _thickness_param() -> Parameter:
@@ -127,6 +139,36 @@ class Checkerboard(Pattern):
             for c in range(cols):
                 level = p["high"] if (r + c + offset) % 2 == 0 else p["low"]
                 img[ys[r] : ys[r + 1], xs[c] : xs[c + 1], :] = level
+        return finalize_signal(
+            img,
+            color_space=p["color_space"],
+            transfer_function=p["transfer_function"],
+            signal_range=p["signal_range"],
+        )
+
+
+@register
+class CenterCross(Pattern):
+    id = "center-cross"
+    name = "Center Cross"
+    category = "Geometry"
+    description = (
+        "A horizontal and a vertical line through the exact centre of the frame. "
+        "On an even width or height the corresponding line is two pixels so it "
+        "stays centred."
+    )
+    parameters = [
+        _line_param(),
+        colorspace_param(),
+        transfer_param(default="gamma-2.4"),
+        range_param(),
+    ]
+
+    def generate(self, width: int, height: int, **p: Any) -> PatternResult:
+        img = canvas(width, height)
+        lvl = p["line_level"]
+        img[:, _center_span(width), :] = lvl
+        img[_center_span(height), :, :] = lvl
         return finalize_signal(
             img,
             color_space=p["color_space"],
