@@ -14,6 +14,7 @@ from . import (
     ramps,  # noqa: E402,F401
     rp219_2_2016,  # noqa: E402,F401
     solid,  # noqa: E402,F401
+    starfield,  # noqa: E402,F401
     steps,  # noqa: E402,F401
     zoneplate,  # noqa: E402,F401
 )
