@@ -1,0 +1,11 @@
+# Blueprint for https://render.com — create a Web Service from this repo
+# and pick "Docker". Health checks hit the API, not the SPA.
+services:
+  - type: web
+    name: open-test-patterns
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"

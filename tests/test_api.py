@@ -44,3 +44,11 @@ def test_render_download():
 def test_unknown_pattern_404():
     r = client.post("/api/preview", json={"pattern_id": "nope", "width": 8, "height": 8})
     assert r.status_code == 404
+
+
+def test_frontend_dir_uses_env(tmp_path, monkeypatch):
+    (tmp_path / "index.html").write_text("<!doctype html>")
+    monkeypatch.setenv("OTP_FRONTEND_DIR", str(tmp_path))
+    from open_test_patterns.api.app import _frontend_dir
+
+    assert _frontend_dir() == tmp_path

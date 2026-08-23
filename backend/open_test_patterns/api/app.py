@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import os
 import tempfile
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from .. import __version__
@@ -40,6 +42,24 @@ app.add_middleware(
 
 # Cap the working resolution for previews; the result is downscaled anyway.
 _PREVIEW_MAX_DIM = 2048
+
+
+def _frontend_dir() -> Path | None:
+    """Directory that holds the Vite production build, if one exists.
+
+    Local ``otp serve`` keeps working without a frontend build. The Docker
+    image copies ``frontend/dist`` in and points ``OTP_FRONTEND_DIR`` at it.
+    """
+    candidates = []
+    env = os.environ.get("OTP_FRONTEND_DIR")
+    if env:
+        candidates.append(Path(env))
+    here = Path(__file__).resolve()
+    candidates.append(here.parents[3] / "frontend" / "dist")
+    for path in candidates:
+        if (path / "index.html").is_file():
+            return path
+    return None
 
 
 def _pattern_model(pattern) -> PatternModel:
@@ -165,3 +185,23 @@ def render(req: RenderRequest) -> StreamingResponse:
         filename=filename,
         background=BackgroundTask(lambda: os.path.exists(tmp_path) and os.remove(tmp_path)),
     )
+
+
+_FRONTEND = _frontend_dir()
+if _FRONTEND is not None:
+    _assets = _FRONTEND / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=_assets), name="assets")
+
+    @app.get("/")
+    def spa_index() -> FileResponse:
+        return FileResponse(_FRONTEND / "index.html")
+
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str) -> FileResponse:
+        # API, OpenAPI, and hashed assets are registered above; this only
+        # catches browser routes so a refresh of / does not 404.
+        candidate = (_FRONTEND / full_path).resolve()
+        if _FRONTEND in candidate.parents and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_FRONTEND / "index.html")

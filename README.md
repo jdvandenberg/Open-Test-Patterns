@@ -84,6 +84,21 @@ npm run dev
 
 The dev server proxies API requests to the backend on port 8000.
 
+### Deploy (Docker / Render)
+
+The repo has a `Dockerfile` that builds the frontend and runs FastAPI as a
+single service — API at `/api/*`, the UI at `/`. Render will set `PORT` for
+you.
+
+```bash
+docker build -t open-test-patterns .
+docker run --rm -p 8000:8000 open-test-patterns
+```
+
+On [Render](https://render.com): New Web Service → this GitHub repo →
+**Docker**. Use `/api/health` as the health-check path. OpenImageIO is not
+tiny; a free instance may run out of memory on 4K/8K renders.
+
 ## License
 
 Code is provided under the Apache-2.0 license. Generated assets contributed to
