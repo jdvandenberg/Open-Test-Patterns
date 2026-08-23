@@ -91,9 +91,8 @@ def test_peak_luminance_is_disabled_for_relative_transfers():
     param = next(
         q for q in P.get_pattern("gradient").parameters if q.name == "peak_luminance"
     )
-    dep = param.disabled_when
-    assert dep is not None
-    assert dep.parameter == "transfer_function"
+    conds = param.disabled_conditions()
+    dep = next(c for c in conds if c.parameter == "transfer_function")
     # Disabled for every relative curve, enabled only for the absolute ones.
     absolute = {tf.id for tf in transfer.list_transfer_functions() if tf.is_absolute}
     relative = {tf.id for tf in transfer.list_transfer_functions() if not tf.is_absolute}

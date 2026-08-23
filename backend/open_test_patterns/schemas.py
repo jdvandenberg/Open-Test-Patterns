@@ -31,7 +31,7 @@ class ParameterModel(BaseModel):
     choices: list[ChoiceModel] = Field(default_factory=list)
     unit: str | None = None
     description: str = ""
-    disabled_when: DisabledWhenModel | None = None
+    disabled_when: list[DisabledWhenModel] = Field(default_factory=list)
 
     @classmethod
     def from_parameter(cls, p: Parameter) -> ParameterModel:
@@ -46,15 +46,14 @@ class ParameterModel(BaseModel):
             choices=[ChoiceModel(value=c.value, label=c.label) for c in p.choices],
             unit=p.unit,
             description=p.description,
-            disabled_when=(
+            disabled_when=[
                 DisabledWhenModel(
-                    parameter=p.disabled_when.parameter,
-                    values=list(p.disabled_when.values),
-                    reason=p.disabled_when.reason,
+                    parameter=cond.parameter,
+                    values=list(cond.values),
+                    reason=cond.reason,
                 )
-                if p.disabled_when
-                else None
-            ),
+                for cond in p.disabled_conditions()
+            ],
         )
 
 

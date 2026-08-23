@@ -101,11 +101,12 @@ export function ParameterControls({ parameters, values, onChange }: Props) {
     <div className="params">
       {parameters.map((p) => {
         const value = values[p.name] ?? p.default;
-        const dep = p.disabled_when;
-        const disabled = dep ? dep.values.includes(String(resolve(dep.parameter))) : false;
+        const deps = p.disabled_when ?? [];
+        const hit = deps.find((d) => d.values.includes(String(resolve(d.parameter))));
+        const disabled = hit !== undefined;
         return (
           <div className={disabled ? "field disabled" : "field"} key={p.name}>
-            <label title={disabled ? dep!.reason || p.description : p.description}>
+            <label title={disabled ? hit.reason || p.description : p.description}>
               {p.label}
               {p.unit ? <span className="unit"> ({p.unit})</span> : null}
             </label>
@@ -162,8 +163,8 @@ export function ParameterControls({ parameters, values, onChange }: Props) {
               <ColorRow p={p} value={value as number[]} disabled={disabled} onChange={onChange} />
             )}
 
-            {disabled && dep!.reason ? (
-              <p className="hint">{dep!.reason}</p>
+            {disabled && hit.reason ? (
+              <p className="hint">{hit.reason}</p>
             ) : (
               p.description && <p className="hint">{p.description}</p>
             )}

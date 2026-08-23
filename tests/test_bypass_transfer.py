@@ -138,11 +138,11 @@ def test_signal_range_declares_bypass_dependency():
         params = {p.name: p for p in pattern.parameters}
         if "signal_range" not in params or "transfer_function" not in params:
             continue
-        dep = params["signal_range"].disabled_when
-        assert dep is not None, f"{pattern.id} signal_range has no disabled_when"
-        assert dep.parameter == "transfer_function"
-        assert "bypass" in dep.values
-        assert dep.reason
+        conds = params["signal_range"].disabled_conditions()
+        assert conds, f"{pattern.id} signal_range has no disabled_when"
+        bypass = next(c for c in conds if c.parameter == "transfer_function")
+        assert "bypass" in bypass.values
+        assert bypass.reason
 
 
 def test_disabled_when_is_exposed_by_the_api():
@@ -151,9 +151,9 @@ def test_disabled_when_is_exposed_by_the_api():
         for p in client.get("/api/patterns/gray-steps").json()["parameters"]
         if p["name"] == "signal_range"
     )
-    assert param["disabled_when"]["parameter"] == "transfer_function"
-    assert param["disabled_when"]["values"] == ["bypass"]
-    assert param["disabled_when"]["reason"]
+    bypass = next(d for d in param["disabled_when"] if d["parameter"] == "transfer_function")
+    assert bypass["values"] == ["bypass"]
+    assert bypass["reason"]
 
 
 def test_rp219_bypass_drops_legal_range():

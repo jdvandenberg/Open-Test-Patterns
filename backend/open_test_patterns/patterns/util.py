@@ -28,19 +28,39 @@ _BYPASS_DISABLES_RANGE = DisabledWhen(
 # own control and only one is live at a time.
 VALUE_MODE = "value_mode"
 LINEAR_MODE = "linear"
+CODE_10BIT_MODE = "code-10bit"
 CODE_12BIT_MODE = "code-12bit"
+CODE_10BIT_MAX = 1023.0
 CODE_12BIT_MAX = 4095.0
+CODE_MODES = (CODE_10BIT_MODE, CODE_12BIT_MODE)
 
 _LINEAR_INAPPLICABLE = DisabledWhen(
     parameter=VALUE_MODE,
-    values=(CODE_12BIT_MODE,),
-    reason="Entering 12-bit code values, so the linear RGB input is unused.",
+    values=CODE_MODES,
+    reason="Entering integer code values, so the linear RGB input is unused.",
 )
-_CODE_INAPPLICABLE = DisabledWhen(
+_CODE_10_INAPPLICABLE = DisabledWhen(
     parameter=VALUE_MODE,
-    values=(LINEAR_MODE,),
-    reason="Entering linear RGB, so the 12-bit code value input is unused.",
+    values=(LINEAR_MODE, CODE_12BIT_MODE),
+    reason="Not entering 10-bit code values, so this input is unused.",
 )
+_CODE_12_INAPPLICABLE = DisabledWhen(
+    parameter=VALUE_MODE,
+    values=(LINEAR_MODE, CODE_10BIT_MODE),
+    reason="Not entering 12-bit code values, so this input is unused.",
+)
+_CODE_MODE_DISABLES_ENCODING = DisabledWhen(
+    parameter=VALUE_MODE,
+    values=CODE_MODES,
+    reason=(
+        "Integer code values are already encoded, so color space, transfer "
+        "function, and peak luminance do not apply. Signal range still does."
+    ),
+)
+
+
+def is_code_mode(value_mode: str) -> bool:
+    return value_mode in CODE_MODES
 
 
 def canvas(width: int, height: int) -> np.ndarray:
@@ -68,6 +88,7 @@ def colorspace_param(default: str = "rec709", name: str = "color_space") -> Para
         default=default,
         choices=colorspace_choices(),
         description="Working / output RGB color space.",
+        disabled_when=_CODE_MODE_DISABLES_ENCODING,
     )
 
 
@@ -79,6 +100,7 @@ def transfer_param(default: str = "linear", name: str = "transfer_function") -> 
         default=default,
         choices=transfer_choices(),
         description="Encoding applied to the linear image.",
+        disabled_when=_CODE_MODE_DISABLES_ENCODING,
     )
 
 
@@ -99,10 +121,13 @@ def peak_luminance_param(default: float = 100.0) -> Parameter:
         step=1.0,
         unit="cd/m²",
         description="Absolute luminance mapped to 1.0 (used by PQ).",
-        disabled_when=DisabledWhen(
-            parameter="transfer_function",
-            values=relative_transfers,
-            reason="Only absolute transfer functions such as PQ map code values to cd/m².",
+        disabled_when=(
+            DisabledWhen(
+                parameter="transfer_function",
+                values=relative_transfers,
+                reason="Only absolute transfer functions such as PQ map code values to cd/m².",
+            ),
+            _CODE_MODE_DISABLES_ENCODING,
         ),
     )
 
@@ -127,12 +152,13 @@ def value_mode_param(default: str = LINEAR_MODE) -> Parameter:
         default=default,
         choices=[
             Choice(LINEAR_MODE, "Linear RGB [0, 1]"),
+            Choice(CODE_10BIT_MODE, "10-bit code value [0, 1023]"),
             Choice(CODE_12BIT_MODE, "12-bit code value [0, 4095]"),
         ],
         description=(
-            "Linear RGB is light and is passed through the transfer function. A "
-            "12-bit code value is already encoded, so it is written out unchanged "
-            "and the transfer function only records how to interpret it."
+            "Linear RGB is light and is passed through the transfer function. "
+            "10-bit and 12-bit code values are already encoded; only signal "
+            "range is still applied."
         ),
     )
 
@@ -142,10 +168,10 @@ def color_params(
     label: str = "Color",
     default: list[float] | None = None,
 ) -> list[Parameter]:
-    """Return the linear-light and 12-bit code-value controls for one color input.
+    """Return the linear-light and integer code-value controls for one color.
 
-    Both are always declared; ``value_mode`` decides which one the generator
-    reads, and the other is greyed out.
+    All three are always declared; ``value_mode`` decides which one the
+    generator reads, and the others are greyed out.
     """
     linear_default = [1.0, 1.0, 1.0] if default is None else default
     return [
@@ -157,6 +183,16 @@ def color_params(
             disabled_when=_LINEAR_INAPPLICABLE,
         ),
         Parameter(
+            f"{name}_code_10",
+            f"{label} (10-bit code value)",
+            ParamType.COLOR,
+            default=[float(round(c * CODE_10BIT_MAX)) for c in linear_default],
+            minimum=0.0,
+            maximum=CODE_10BIT_MAX,
+            step=1.0,
+            disabled_when=_CODE_10_INAPPLICABLE,
+        ),
+        Parameter(
             f"{name}_code",
             f"{label} (12-bit code value)",
             ParamType.COLOR,
@@ -164,7 +200,7 @@ def color_params(
             minimum=0.0,
             maximum=CODE_12BIT_MAX,
             step=1.0,
-            disabled_when=_CODE_INAPPLICABLE,
+            disabled_when=_CODE_12_INAPPLICABLE,
         ),
     ]
 
@@ -172,14 +208,18 @@ def color_params(
 def authored_color(p: dict[str, Any], name: str = "color") -> np.ndarray:
     """Return one color input normalised to ``[0, 1]``.
 
-    Code values are divided by full scale and rounded first, since a 12-bit code
-    value is an integer. Normalising both modes to the same range lets a
-    generator build its geometry once; :func:`finalize_authored` decides whether
-    the numbers are treated as light or as code values.
+    Code values are divided by full scale and rounded first, since a code value
+    is an integer. Normalising every mode to the same range lets a generator
+    build its geometry once; :func:`finalize_authored` decides whether the
+    numbers are treated as light or as code values.
     """
-    if p.get(VALUE_MODE, LINEAR_MODE) == CODE_12BIT_MODE:
+    mode = p.get(VALUE_MODE, LINEAR_MODE)
+    if mode == CODE_12BIT_MODE:
         code = np.asarray(p[f"{name}_code"], dtype=np.float64)
         return np.round(code) / CODE_12BIT_MAX
+    if mode == CODE_10BIT_MODE:
+        code = np.asarray(p[f"{name}_code_10"], dtype=np.float64)
+        return np.round(code) / CODE_10BIT_MAX
     return np.asarray(p[name], dtype=np.float64)
 
 
@@ -194,18 +234,18 @@ def finalize_authored(
 ) -> PatternResult:
     """Finalize an image built from :func:`authored_color` values.
 
-    In linear mode the transfer function is applied; in code-value mode the
-    numbers are already code values and are written through untouched.
+    In linear mode the transfer function and range are applied. In a code-value
+    mode the transfer function is not applied again, but signal range still is:
+    full-range typed codes can be remapped to legal range on the way out.
     """
-    if value_mode == CODE_12BIT_MODE:
-        is_absolute = transfer.get_transfer_function(transfer_function).is_absolute
+    if is_code_mode(value_mode):
+        # ``linear`` rather than ``bypass`` so effective_range() does not force
+        # full range and swallow a Legal selection.
         return finalize_signal(
             img,
             color_space=color_space,
-            transfer_function=transfer_function,
-            # Nothing is encoded here, but the preview still needs the peak to
-            # normalise absolute curves. Mirror finalize() and drop it otherwise.
-            peak_luminance=peak_luminance if is_absolute else None,
+            transfer_function="linear",
+            peak_luminance=None,
             signal_range=signal_range,
         )
     return finalize(

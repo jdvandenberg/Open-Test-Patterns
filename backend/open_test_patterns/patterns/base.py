@@ -64,7 +64,15 @@ class Parameter:
     choices: list[Choice] = field(default_factory=list)
     unit: str | None = None
     description: str = ""
-    disabled_when: DisabledWhen | None = None
+    # One condition or several; the control is greyed out if any of them match.
+    disabled_when: DisabledWhen | tuple[DisabledWhen, ...] | None = None
+
+    def disabled_conditions(self) -> tuple[DisabledWhen, ...]:
+        if self.disabled_when is None:
+            return ()
+        if isinstance(self.disabled_when, DisabledWhen):
+            return (self.disabled_when,)
+        return self.disabled_when
 
     def coerce(self, value: Any) -> Any:
         """Validate and coerce a raw incoming value to this parameter's type."""

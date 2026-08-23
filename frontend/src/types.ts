@@ -22,7 +22,7 @@ export interface Parameter {
   choices: Choice[];
   unit: string | null;
   description: string;
-  disabled_when: DisabledWhen | null;
+  disabled_when: DisabledWhen[];
 }
 
 export interface Pattern {
