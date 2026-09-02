@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { downloadRender, fetchFormats, fetchPatterns, fetchPreview } from "./api";
+import { downloadFilename, downloadRender, fetchFormats, fetchPatterns, fetchPreview } from "./api";
 import { ParameterControls } from "./components/ParameterControls";
 import type { ImageFormat, ParamValues, Pattern } from "./types";
 
@@ -123,6 +123,12 @@ export function App() {
         format: formatId,
         bit_depth: bitDepth,
         compression: currentFormat?.compressions.length ? compression : null,
+        filename: downloadFilename(
+          selected.name,
+          width,
+          height,
+          currentFormat?.extension ?? formatId,
+        ),
       });
     } catch (e) {
       setError(String((e as Error).message ?? e));

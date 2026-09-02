@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -42,6 +43,12 @@ app.add_middleware(
 
 # Cap the working resolution for previews; the result is downscaled anyway.
 _PREVIEW_MAX_DIM = 2048
+
+
+def _download_filename(name: str, width: int, height: int, extension: str) -> str:
+    """Build a download name from the pattern's UI title, not its internal id."""
+    stem = re.sub(r"[^\w]+", "_", name).strip("_")
+    return f"{stem}_{width}x{height}.{extension}"
 
 
 def _frontend_dir() -> Path | None:
@@ -178,7 +185,7 @@ def render(req: RenderRequest) -> StreamingResponse:
             os.remove(tmp_path)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    filename = f"{req.pattern_id}_{req.width}x{req.height}.{fmt.extension}"
+    filename = _download_filename(pattern.name, req.width, req.height, fmt.extension)
     return FileResponse(
         tmp_path,
         media_type=fmt.mime,

@@ -8,11 +8,12 @@ import open_test_patterns.patterns as P
 
 def _render(width, height, **params):
     params.setdefault("transfer_function", "linear")
-    return P.get_pattern("starfield").render(width, height, params).image
+    return P.get_pattern("pixel-grid").render(width, height, params).image
 
 
 def test_starfield_is_in_frequency():
-    p = P.get_pattern("starfield")
+    p = P.get_pattern("pixel-grid")
+    assert p.id == "pixel-grid"
     assert p.name == "Pixel Grid"
     assert p.category == "Frequency"
 

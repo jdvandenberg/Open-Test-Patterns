@@ -19,8 +19,8 @@ from .util import (
 
 
 @register
-class Starfield(Pattern):
-    id = "starfield"
+class PixelGrid(Pattern):
+    id = "pixel-grid"
     name = "Pixel Grid"
     category = "Frequency"
     description = (

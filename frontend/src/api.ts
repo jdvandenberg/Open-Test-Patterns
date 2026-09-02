@@ -21,6 +21,16 @@ export interface RenderSpec {
   params: ParamValues;
 }
 
+export function downloadFilename(
+  name: string,
+  width: number,
+  height: number,
+  extension: string,
+): string {
+  const stem = name.replace(/[^\w]+/g, "_").replace(/^_|_$/g, "");
+  return `${stem}_${width}x${height}.${extension}`;
+}
+
 export async function fetchPreview(spec: RenderSpec, signal?: AbortSignal): Promise<Blob> {
   const res = await fetch("/api/preview", {
     method: "POST",
@@ -40,21 +50,20 @@ export async function downloadRender(
     format: string;
     bit_depth: number | null;
     compression?: string | null;
+    filename: string;
   },
 ): Promise<void> {
+  const { filename, ...body } = spec;
   const res = await fetch("/api/render", {
     method: "POST",
     headers: JSON_HEADERS,
-    body: JSON.stringify(spec),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(detail.detail ?? "Render failed");
   }
   const blob = await res.blob();
-  const disposition = res.headers.get("content-disposition") ?? "";
-  const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match ? match[1] : `${spec.pattern_id}.${spec.format}`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

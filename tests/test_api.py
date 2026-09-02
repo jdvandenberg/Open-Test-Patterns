@@ -38,7 +38,27 @@ def test_render_download():
         },
     )
     assert r.status_code == 200
-    assert "attachment" in r.headers["content-disposition"]
+    disposition = r.headers["content-disposition"]
+    assert "attachment" in disposition
+    assert "SMPTE_RP_219_2_2016_Color_Bars_640x360.tif" in disposition
+
+
+def test_render_filename_uses_pattern_name():
+    r = client.post(
+        "/api/render",
+        json={
+            "pattern_id": "pixel-grid",
+            "width": 64,
+            "height": 36,
+            "params": {},
+            "format": "tiff",
+            "bit_depth": 16,
+        },
+    )
+    assert r.status_code == 200
+    disposition = r.headers["content-disposition"]
+    assert "Pixel_Grid_64x36.tif" in disposition
+    assert "starfield" not in disposition.lower()
 
 
 def test_unknown_pattern_404():
