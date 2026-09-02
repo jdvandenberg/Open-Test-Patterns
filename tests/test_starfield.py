@@ -1,4 +1,4 @@
-"""Starfield: a lattice of single non-black pixels on a black field."""
+"""Pixel Grid: a lattice of single non-black pixels on a black field."""
 
 import numpy as np
 import pytest
@@ -13,7 +13,7 @@ def _render(width, height, **params):
 
 def test_starfield_is_in_frequency():
     p = P.get_pattern("starfield")
-    assert p.name == "Starfield"
+    assert p.name == "Pixel Grid"
     assert p.category == "Frequency"
 
 

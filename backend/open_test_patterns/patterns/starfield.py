@@ -1,4 +1,4 @@
-"""Starfield: a regular lattice of single pixels on black."""
+"""Pixel Grid: a regular lattice of single pixels on black."""
 
 from __future__ import annotations
 
@@ -21,12 +21,12 @@ from .util import (
 @register
 class Starfield(Pattern):
     id = "starfield"
-    name = "Starfield"
+    name = "Pixel Grid"
     category = "Frequency"
     description = (
-        "Single-pixel stars on a black field, on a regular lattice. "
+        "Single-pixel samples on a black field, on a regular lattice. "
         "Spacing n=2 lights every other pixel in X and Y; larger n thins "
-        "the field. Stars are either RGBW quadrants or a flat linear RGB colour."
+        "the field. Lit pixels are either RGBW quadrants or a flat linear RGB colour."
     )
     parameters = [
         Parameter(
@@ -48,7 +48,7 @@ class Starfield(Pattern):
             disabled_when=DisabledWhen(
                 parameter="fill",
                 values=("rgbw",),
-                reason="RGBW quadrants set the star colour, so this input is unused.",
+                reason="RGBW quadrants set the pixel colour, so this input is unused.",
             ),
         ),
         Parameter(
