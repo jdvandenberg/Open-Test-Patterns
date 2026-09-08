@@ -108,6 +108,29 @@ body {
   color: #fff;
 }
 
+.github-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.github-link:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.github-link svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
 /* Stage */
 .stage {
   display: flex;
