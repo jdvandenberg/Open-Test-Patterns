@@ -31,6 +31,7 @@ export interface Pattern {
   category: string;
   description: string;
   parameters: Parameter[];
+  kind?: "image" | "audio";
 }
 
 export interface Compression {

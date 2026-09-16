@@ -65,15 +65,21 @@ def _resize_preview(buf: ImageBuf, max_dim: int) -> ImageBuf:
     new_w = max(1, int(round(w * scale)))
     new_h = max(1, int(round(h * scale)))
     dst = ImageBuf(ImageSpec(new_w, new_h, spec.nchannels, oiio.UINT8))
-    ImageBufAlgo.resize(dst, buf)
+    # Nearest-neighbour: filtered resize smears single-pixel charts.
+    ImageBufAlgo.resample(dst, buf, interpolate=False)
     return dst
 
 
-def render_preview_png(result: PatternResult, max_dim: int = 1200) -> bytes:
-    """Return PNG bytes of an sRGB preview, downscaled to ``max_dim`` on the long edge."""
+def render_preview_png(result: PatternResult, max_dim: int | None = None) -> bytes:
+    """Return PNG bytes of an sRGB preview.
+
+    The working image is already capped for the browser. Encoding it 1:1 keeps
+    Pixel Grid and similar charts sharp; a second filtered resize would blur them.
+    """
     display = to_display_srgb(result)
     buf = ImageBuf(display)
-    buf = _resize_preview(buf, max_dim)
+    if max_dim is not None:
+        buf = _resize_preview(buf, max_dim)
 
     fd, tmp_path = tempfile.mkstemp(suffix=".png")
     os.close(fd)

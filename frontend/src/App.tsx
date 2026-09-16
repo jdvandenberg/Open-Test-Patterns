@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { downloadFilename, downloadRender, fetchFormats, fetchPatterns, fetchPreview } from "./api";
+import { downloadFilename, downloadRender, downloadTone, fetchFormats, fetchPatterns, fetchPreview, fetchTone } from "./api";
 import { ParameterControls } from "./components/ParameterControls";
+import { PatternPreview } from "./components/PatternPreview";
 import type { ImageFormat, ParamValues, Pattern } from "./types";
 
 const RESOLUTIONS: { label: string; w: number; h: number }[] = [
@@ -16,6 +17,44 @@ function defaultParams(pattern: Pattern): ParamValues {
   const values: ParamValues = {};
   for (const p of pattern.parameters) values[p.name] = p.default;
   return values;
+}
+
+function toneSpec(params: ParamValues) {
+  return {
+    waveform: String(params.waveform ?? "sine"),
+    frequency: Number(params.frequency ?? 440),
+    frequency_low: Number(params.frequency_low ?? 20),
+    frequency_high: Number(params.frequency_high ?? 20_000),
+    duration: Number(params.duration ?? 5),
+    loudness: Number(params.loudness ?? -20),
+  };
+}
+
+function formatHertz(hz: number): string {
+  if (hz >= 1000) {
+    const khz = hz / 1000;
+    const text = Number.isInteger(khz) ? String(khz) : khz.toPrecision(4).replace(/\.?0+$/, "");
+    return `${text} kHz`;
+  }
+  return `${hz} Hz`;
+}
+
+function toneHeadline(params: ParamValues): string {
+  const spec = toneSpec(params);
+  if (spec.waveform === "white" || spec.waveform === "pink") {
+    const lo = Math.min(spec.frequency_low, spec.frequency_high);
+    const hi = Math.max(spec.frequency_low, spec.frequency_high);
+    const kind = spec.waveform === "white" ? "White noise" : "Pink noise";
+    return `${kind} ${formatHertz(lo)} – ${formatHertz(hi)}`;
+  }
+  const labels: Record<string, string> = {
+    sine: "Sine",
+    triangle: "Triangle",
+    sawtooth: "Sawtooth",
+    square: "Square",
+  };
+  const name = labels[spec.waveform] ?? spec.waveform;
+  return `${name} ${formatHertz(spec.frequency)}`;
 }
 
 export function App() {
@@ -39,6 +78,7 @@ export function App() {
     () => patterns.find((p) => p.id === selectedId) ?? null,
     [patterns, selectedId],
   );
+  const isAudio = selected?.kind === "audio";
   const currentFormat = useMemo(
     () => formats.find((f) => f.id === formatId) ?? null,
     [formats, formatId],
@@ -68,7 +108,7 @@ export function App() {
 
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (!selected) return;
+    if (!selected || isAudio) return;
     const handle = setTimeout(() => {
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -91,7 +131,30 @@ export function App() {
         .finally(() => setLoading(false));
     }, 250);
     return () => clearTimeout(handle);
-  }, [selected, params, width, height]);
+  }, [selected, params, width, height, isAudio]);
+
+  useEffect(() => {
+    if (!selected || !isAudio) return;
+    const handle = setTimeout(() => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setLoading(true);
+      setError(null);
+      fetchTone(toneSpec(params), controller.signal)
+        .then((blob) => {
+          setPreviewUrl((old) => {
+            if (old) URL.revokeObjectURL(old);
+            return URL.createObjectURL(blob);
+          });
+        })
+        .catch((e) => {
+          if (e.name !== "AbortError") setError(String(e.message ?? e));
+        })
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [selected, params, isAudio]);
 
   const grouped = useMemo(() => {
     const filtered = patterns.filter(
@@ -115,21 +178,25 @@ export function App() {
     setDownloading(true);
     setError(null);
     try {
-      await downloadRender({
-        pattern_id: selected.id,
-        width,
-        height,
-        params,
-        format: formatId,
-        bit_depth: bitDepth,
-        compression: currentFormat?.compressions.length ? compression : null,
-        filename: downloadFilename(
-          selected.name,
+      if (isAudio) {
+        await downloadTone(toneSpec(params));
+      } else {
+        await downloadRender({
+          pattern_id: selected.id,
           width,
           height,
-          currentFormat?.extension ?? formatId,
-        ),
-      });
+          params,
+          format: formatId,
+          bit_depth: bitDepth,
+          compression: currentFormat?.compressions.length ? compression : null,
+          filename: downloadFilename(
+            selected.name,
+            width,
+            height,
+            currentFormat?.extension ?? formatId,
+          ),
+        });
+      }
     } catch (e) {
       setError(String((e as Error).message ?? e));
     } finally {
@@ -180,14 +247,34 @@ export function App() {
       </aside>
 
       <main className="stage">
-        <div className="preview-wrap">
-          {previewUrl ? (
-            <img className="preview" src={previewUrl} alt={selected?.name ?? "preview"} />
-          ) : (
+        {isAudio ? (
+          <div className="preview-wrap">
+            {previewUrl ? (
+              <div className="audio-preview">
+                <div className="audio-hz">{toneHeadline(params)}</div>
+                <div className="audio-meta">
+                  {toneSpec(params).duration} s · {toneSpec(params).loudness} dBFS
+                </div>
+                <audio key={previewUrl} controls src={previewUrl} />
+              </div>
+            ) : (
+              <div className="preview placeholder">Generating tone…</div>
+            )}
+            {loading && <div className="loading-badge">Generating…</div>}
+          </div>
+        ) : previewUrl ? (
+            <PatternPreview
+              src={previewUrl}
+              alt={selected?.name ?? "preview"}
+              resetKey={selectedId}
+              loading={loading}
+            />
+        ) : (
+          <div className="preview-wrap">
             <div className="preview placeholder">Select a pattern</div>
-          )}
-          {loading && <div className="loading-badge">Rendering…</div>}
-        </div>
+            {loading && <div className="loading-badge">Rendering…</div>}
+          </div>
+        )}
         {selected && (
           <div className="stage-caption">
             <strong>{selected.name}</strong> — {selected.description}
@@ -206,94 +293,104 @@ export function App() {
               onChange={onParamChange}
             />
 
-            <h2>Output</h2>
-            <div className="field">
-              <label>Resolution</label>
-              <select
-                value={`${width}x${height}`}
-                onChange={(e) => {
-                  const preset = RESOLUTIONS.find((r) => `${r.w}x${r.h}` === e.target.value);
-                  if (preset) {
-                    setWidth(preset.w);
-                    setHeight(preset.h);
-                  }
-                }}
-              >
-                {RESOLUTIONS.map((r) => (
-                  <option key={r.label} value={`${r.w}x${r.h}`}>
-                    {r.label}
-                  </option>
-                ))}
-                {!RESOLUTIONS.some((r) => r.w === width && r.h === height) && (
-                  <option value={`${width}x${height}`}>
-                    Custom {width}×{height}
-                  </option>
+            {!isAudio && (
+              <>
+                <h2>Output</h2>
+                <div className="field">
+                  <label>Resolution</label>
+                  <select
+                    value={`${width}x${height}`}
+                    onChange={(e) => {
+                      const preset = RESOLUTIONS.find((r) => `${r.w}x${r.h}` === e.target.value);
+                      if (preset) {
+                        setWidth(preset.w);
+                        setHeight(preset.h);
+                      }
+                    }}
+                  >
+                    {RESOLUTIONS.map((r) => (
+                      <option key={r.label} value={`${r.w}x${r.h}`}>
+                        {r.label}
+                      </option>
+                    ))}
+                    {!RESOLUTIONS.some((r) => r.w === width && r.h === height) && (
+                      <option value={`${width}x${height}`}>
+                        Custom {width}×{height}
+                      </option>
+                    )}
+                  </select>
+                </div>
+                <div className="field range-row">
+                  <input
+                    type="number"
+                    value={width}
+                    min={1}
+                    max={16384}
+                    onChange={(e) => setWidth(Number(e.target.value))}
+                  />
+                  <span className="times">×</span>
+                  <input
+                    type="number"
+                    value={height}
+                    min={1}
+                    max={16384}
+                    onChange={(e) => setHeight(Number(e.target.value))}
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Format</label>
+                  <select value={formatId} onChange={(e) => setFormatId(e.target.value)}>
+                    {formats.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {currentFormat && currentFormat.allowed_bit_depths.length > 1 && (
+                  <div className="field">
+                    <label>Bit depth</label>
+                    <select
+                      value={bitDepth ?? currentFormat.default_bit_depth}
+                      onChange={(e) => setBitDepth(Number(e.target.value))}
+                    >
+                      {currentFormat.allowed_bit_depths.map((d) => (
+                        <option key={d} value={d}>
+                          {d === 16 && currentFormat.id === "exr" ? "16 (half)" : `${d}-bit`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 )}
-              </select>
-            </div>
-            <div className="field range-row">
-              <input
-                type="number"
-                value={width}
-                min={1}
-                max={16384}
-                onChange={(e) => setWidth(Number(e.target.value))}
-              />
-              <span className="times">×</span>
-              <input
-                type="number"
-                value={height}
-                min={1}
-                max={16384}
-                onChange={(e) => setHeight(Number(e.target.value))}
-              />
-            </div>
 
-            <div className="field">
-              <label>Format</label>
-              <select value={formatId} onChange={(e) => setFormatId(e.target.value)}>
-                {formats.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {currentFormat && currentFormat.allowed_bit_depths.length > 1 && (
-              <div className="field">
-                <label>Bit depth</label>
-                <select
-                  value={bitDepth ?? currentFormat.default_bit_depth}
-                  onChange={(e) => setBitDepth(Number(e.target.value))}
-                >
-                  {currentFormat.allowed_bit_depths.map((d) => (
-                    <option key={d} value={d}>
-                      {d === 16 && currentFormat.id === "exr" ? "16 (half)" : `${d}-bit`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {currentFormat && currentFormat.compressions.length > 0 && (
-              <div className="field">
-                <label>Compression</label>
-                <select
-                  value={compression ?? currentFormat.default_compression ?? ""}
-                  onChange={(e) => setCompression(e.target.value)}
-                >
-                  {currentFormat.compressions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                {currentFormat && currentFormat.compressions.length > 0 && (
+                  <div className="field">
+                    <label>Compression</label>
+                    <select
+                      value={compression ?? currentFormat.default_compression ?? ""}
+                      onChange={(e) => setCompression(e.target.value)}
+                    >
+                      {currentFormat.compressions.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </>
             )}
 
             <button className="download" onClick={onDownload} disabled={downloading}>
-              {downloading ? "Rendering…" : `Download .${currentFormat?.extension ?? formatId}`}
+              {downloading
+                ? isAudio
+                  ? "Generating…"
+                  : "Rendering…"
+                : isAudio
+                  ? "Download .wav"
+                  : `Download .${currentFormat?.extension ?? formatId}`}
             </button>
           </>
         )}

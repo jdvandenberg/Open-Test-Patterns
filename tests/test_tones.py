@@ -1,0 +1,191 @@
+"""Test-tone generator and HTTP download."""
+
+import math
+import wave
+from io import BytesIO
+
+import numpy as np
+from fastapi.testclient import TestClient
+
+from open_test_patterns.api.app import app
+from open_test_patterns.audio import generate_tone, tone_filename, wav_bytes
+
+client = TestClient(app)
+
+WAVEFORMS = ("sine", "triangle", "sawtooth", "square", "white", "pink")
+
+
+def _mid_peak_dbfs(samples: np.ndarray) -> float:
+    mid = samples[len(samples) // 4 : 3 * len(samples) // 4]
+    return 20 * math.log10(float(np.abs(mid).max()))
+
+
+def test_default_tone_is_minus_20_dbfs_peak():
+    samples = generate_tone()
+    assert abs(_mid_peak_dbfs(samples) - (-20.0)) < 0.05
+    assert len(samples) == 48_000 * 5
+
+
+def test_waveforms_share_peak_loudness():
+    for waveform in WAVEFORMS:
+        samples = generate_tone(
+            frequency=440,
+            duration=0.2,
+            loudness=-12,
+            waveform=waveform,
+            rng=np.random.default_rng(0),
+        )
+        peak_db = 20 * math.log10(float(np.abs(samples).max()))
+        assert abs(peak_db - (-12.0)) < 0.05
+
+
+def test_periodic_wave_shapes():
+    sr = 48_000
+    freq = 100
+    start = int(0.1 * sr)
+    period = sr // freq
+    sl = slice(start, start + period)
+    sine = generate_tone(freq, duration=0.2, loudness=0, waveform="sine")
+    tri = generate_tone(freq, duration=0.2, loudness=0, waveform="triangle")
+    saw = generate_tone(freq, duration=0.2, loudness=0, waveform="sawtooth")
+    sq = generate_tone(freq, duration=0.2, loudness=0, waveform="square")
+    t = np.arange(start, start + period) / sr
+    assert np.allclose(sine[sl], np.sin(2 * math.pi * freq * t), atol=1e-9)
+    assert float(np.abs(sq[sl]).min()) > 0.99
+    assert saw[start] < -0.99
+    assert saw[start + period // 4] > saw[start]
+    assert abs(float(tri[start + period // 4]) - 1.0) < 0.02
+
+
+def test_noise_band_is_stable_for_same_seed():
+    kwargs = dict(
+        duration=0.05,
+        loudness=-20,
+        waveform="white",
+        frequency_low=20,
+        frequency_high=20_000,
+    )
+    a = generate_tone(rng=np.random.default_rng(1), **kwargs)
+    b = generate_tone(rng=np.random.default_rng(1), **kwargs)
+    np.testing.assert_array_equal(a, b)
+
+
+def test_noise_band_changes_the_signal():
+    a = generate_tone(
+        duration=0.2,
+        waveform="white",
+        frequency_low=100,
+        frequency_high=300,
+        rng=np.random.default_rng(2),
+    )
+    b = generate_tone(
+        duration=0.2,
+        waveform="white",
+        frequency_low=2000,
+        frequency_high=4000,
+        rng=np.random.default_rng(2),
+    )
+    assert not np.allclose(a, b)
+
+
+def test_noise_is_band_limited():
+    samples = generate_tone(
+        duration=0.5,
+        loudness=-6,
+        waveform="white",
+        frequency_low=1000,
+        frequency_high=2000,
+        rng=np.random.default_rng(3),
+    )
+    spec = np.abs(np.fft.rfft(samples))
+    freqs = np.fft.rfftfreq(len(samples), 1 / 48_000)
+    in_band = float(spec[(freqs >= 1000) & (freqs <= 2000)].mean())
+    out_band = float(
+        spec[((freqs > 50) & (freqs < 500)) | ((freqs > 3000) & (freqs < 10_000))].mean()
+    )
+    assert in_band > 20 * out_band
+
+
+def test_tone_catalog_lists_waveforms():
+    data = client.get("/api/patterns").json()
+    tone = next(p for p in data if p["id"] == "sine-tone")
+    assert tone["kind"] == "audio"
+    assert tone["category"] == "Audio"
+    assert tone["name"] == "Test Tone"
+    names = [p["name"] for p in tone["parameters"]]
+    assert names[:6] == [
+        "waveform",
+        "frequency",
+        "frequency_low",
+        "frequency_high",
+        "duration",
+        "loudness",
+    ]
+    waveform = next(p for p in tone["parameters"] if p["name"] == "waveform")
+    assert {c["value"] for c in waveform["choices"]} == set(WAVEFORMS)
+    freq = next(p for p in tone["parameters"] if p["name"] == "frequency")
+    assert freq["disabled_when"][0]["values"] == ["white", "pink"]
+    low = next(p for p in tone["parameters"] if p["name"] == "frequency_low")
+    high = next(p for p in tone["parameters"] if p["name"] == "frequency_high")
+    assert low["default"] == 20
+    assert high["default"] == 20_000
+    assert set(low["disabled_when"][0]["values"]) == {"sine", "triangle", "sawtooth", "square"}
+    assert high["disabled_when"][0]["values"] == low["disabled_when"][0]["values"]
+
+
+def test_tone_download_is_wav():
+    r = client.post(
+        "/api/tone",
+        json={"frequency": 1000, "duration": 0.2, "loudness": -20},
+    )
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("audio/wav")
+    assert "Sine_1000Hz_0.2s_-20dBFS.wav" in r.headers["content-disposition"]
+    with wave.open(BytesIO(r.content)) as wav:
+        assert wav.getnchannels() == 1
+        assert wav.getframerate() == 48_000
+        assert wav.getsampwidth() == 2
+
+
+def test_tone_download_square_and_pink_filenames():
+    square = client.post(
+        "/api/tone",
+        json={"waveform": "square", "frequency": 440, "duration": 0.1, "loudness": -18},
+    )
+    assert square.status_code == 200
+    assert "Square_440Hz_0.1s_-18dBFS.wav" in square.headers["content-disposition"]
+
+    pink = client.post(
+        "/api/tone",
+        json={
+            "waveform": "pink",
+            "frequency": 440,
+            "frequency_low": 20,
+            "frequency_high": 20_000,
+            "duration": 0.1,
+            "loudness": -18,
+        },
+    )
+    assert pink.status_code == 200
+    assert "Pink_Noise_20-20000Hz_0.1s_-18dBFS.wav" in pink.headers["content-disposition"]
+
+
+def test_unknown_waveform_rejected():
+    r = client.post("/api/tone", json={"waveform": "chirp"})
+    assert r.status_code == 422
+
+
+def test_tone_filename():
+    assert tone_filename(440, 5, -20) == "Sine_440Hz_5s_-20dBFS.wav"
+    assert tone_filename(440, 5, -20, "triangle") == "Triangle_440Hz_5s_-20dBFS.wav"
+    assert tone_filename(440, 5, -20, "white") == "White_Noise_20-20000Hz_5s_-20dBFS.wav"
+    assert (
+        tone_filename(440, 5, -20, "pink", frequency_low=100, frequency_high=8000)
+        == "Pink_Noise_100-8000Hz_5s_-20dBFS.wav"
+    )
+
+
+def test_wav_bytes_roundtrip():
+    samples = generate_tone(frequency=440, duration=0.1, loudness=-20)
+    data = wav_bytes(samples)
+    assert data[:4] == b"RIFF"

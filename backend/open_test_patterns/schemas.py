@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -63,6 +63,7 @@ class PatternModel(BaseModel):
     category: str
     description: str
     parameters: list[ParameterModel]
+    kind: str = "image"
 
 
 class ColorSpaceModel(BaseModel):
@@ -111,3 +112,12 @@ class PreviewRequest(BaseModel):
     width: int = Field(default=1920, ge=1, le=16384)
     height: int = Field(default=1080, ge=1, le=16384)
     params: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToneRequest(BaseModel):
+    frequency: float = Field(default=440.0, gt=0, le=20_000)
+    duration: float = Field(default=5.0, gt=0, le=60)
+    loudness: float = Field(default=-20.0, le=0, ge=-60)
+    waveform: Literal["sine", "triangle", "sawtooth", "square", "white", "pink"] = "sine"
+    frequency_low: float = Field(default=20.0, gt=0, le=20_000)
+    frequency_high: float = Field(default=20_000.0, gt=0, le=20_000)

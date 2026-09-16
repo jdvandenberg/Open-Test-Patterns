@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from .. import __version__
+from ..audio import generate_tone, sine_tone_catalog, tone_filename, wav_bytes
 from ..color import colorspaces, transfer
 from ..imageio import SUPPORTED_FORMATS, render_preview_png, write_image
 from ..patterns import all_patterns, get_pattern
@@ -25,6 +26,7 @@ from ..schemas import (
     PatternModel,
     PreviewRequest,
     RenderRequest,
+    ToneRequest,
     TransferModel,
 )
 
@@ -69,14 +71,29 @@ def _frontend_dir() -> Path | None:
     return None
 
 
-def _pattern_model(pattern) -> PatternModel:
+def _pattern_model(pattern, *, kind: str = "image") -> PatternModel:
     return PatternModel(
         id=pattern.id,
         name=pattern.name,
         category=pattern.category,
         description=pattern.description,
         parameters=[ParameterModel.from_parameter(p) for p in pattern.parameters],
+        kind=kind,
     )
+
+
+def _audio_models() -> list[PatternModel]:
+    item = sine_tone_catalog()
+    return [
+        PatternModel(
+            id=item["id"],
+            name=item["name"],
+            category=item["category"],
+            description=item["description"],
+            parameters=[ParameterModel.from_parameter(p) for p in item["parameters"]],
+            kind="audio",
+        )
+    ]
 
 
 def _preview_dimensions(width: int, height: int) -> tuple[int, int]:
@@ -94,7 +111,7 @@ def health() -> dict[str, str]:
 
 @app.get("/api/patterns", response_model=list[PatternModel])
 def list_patterns() -> list[PatternModel]:
-    return [_pattern_model(p) for p in all_patterns()]
+    return [_pattern_model(p) for p in all_patterns()] + _audio_models()
 
 
 @app.get("/api/patterns/{pattern_id}", response_model=PatternModel)
@@ -191,6 +208,34 @@ def render(req: RenderRequest) -> StreamingResponse:
         media_type=fmt.mime,
         filename=filename,
         background=BackgroundTask(lambda: os.path.exists(tmp_path) and os.remove(tmp_path)),
+    )
+
+
+@app.post("/api/tone")
+def tone(req: ToneRequest) -> Response:
+    try:
+        samples = generate_tone(
+            req.frequency,
+            req.duration,
+            req.loudness,
+            waveform=req.waveform,
+            frequency_low=req.frequency_low,
+            frequency_high=req.frequency_high,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    filename = tone_filename(
+        req.frequency,
+        req.duration,
+        req.loudness,
+        req.waveform,
+        req.frequency_low,
+        req.frequency_high,
+    )
+    return Response(
+        content=wav_bytes(samples),
+        media_type="audio/wav",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

@@ -30,7 +30,7 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 260px 1fr 320px;
+  grid-template-columns: 260px minmax(0, 1fr) 320px;
   height: 100vh;
   overflow: hidden;
 }
@@ -42,6 +42,9 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
+  min-height: 0;
 }
 
 .brand {
@@ -136,17 +139,32 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow: hidden;
   background: var(--neutral-stage);
+}
+
+.preview-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .preview-wrap {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   position: relative;
   padding: 24px;
+  min-width: 0;
   min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  cursor: grab;
   background-image:
     linear-gradient(45deg, #232323 25%, transparent 25%),
     linear-gradient(-45deg, #232323 25%, transparent 25%),
@@ -156,18 +174,100 @@ body {
   background-position: 0 0, 0 12px, 12px -12px, -12px 0;
 }
 
+.preview-wrap:has(.audio-preview),
+.preview-wrap:has(.placeholder) {
+  cursor: default;
+}
+
+.preview-wrap.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .preview {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  display: block;
+  max-width: none;
+  max-height: none;
+  flex-shrink: 0;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
   image-rendering: pixelated;
+}
+
+.preview-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.zoom-controls {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.72);
+  border-radius: 999px;
+  padding: 3px;
+  z-index: 1;
+}
+
+.zoom-controls button {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.zoom-controls button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.zoom-controls .zoom-level {
+  min-width: 52px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-controls .zoom-actual {
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .preview.placeholder {
   color: var(--text-dim);
   font-size: 14px;
   box-shadow: none;
+}
+
+.audio-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--text);
+}
+
+.audio-hz {
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.audio-meta {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.audio-preview audio {
+  width: min(420px, 80vw);
 }
 
 .loading-badge {
@@ -206,6 +306,10 @@ body {
   border-left: 1px solid var(--border);
   overflow-y: auto;
   padding: 16px;
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .inspector h2 {
