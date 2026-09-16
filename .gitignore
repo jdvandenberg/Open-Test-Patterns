@@ -24,7 +24,7 @@ frontend/.vite/
 output/
 
 # Reference material kept locally only.
-# Standards/ holds copyrighted SMPTE documents that must not be redistributed.
+# Standards and references/ holds copyrighted SMPTE documents that must not be redistributed.
 # Archive/ is the pre-rewrite source material and embeds its own git repo.
-Standards/
+Standards and references/
 Archive/
