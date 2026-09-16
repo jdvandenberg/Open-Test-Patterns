@@ -1,4 +1,4 @@
-"""Geometry / alignment patterns: frame, grid, checkerboard, center cross."""
+"""Geometry / alignment patterns: grid, checkerboard, center cross."""
 
 from __future__ import annotations
 
@@ -57,36 +57,6 @@ def _stroke_circle(
     half = thickness / 2.0
     mask = (dist >= max(radius - half, 0.0)) & (dist < radius + half)
     img[mask] = level
-
-
-@register
-class FrameChart(Pattern):
-    id = "frame"
-    name = "Frame / Border"
-    category = "Geometry"
-    description = "A single-pixel (or thicker) border around the active image area."
-    parameters = [
-        _line_param(),
-        _thickness_param(),
-        colorspace_param(),
-        transfer_param(default="gamma-2.4"),
-        range_param(),
-    ]
-
-    def generate(self, width: int, height: int, **p: Any) -> PatternResult:
-        img = canvas(width, height)
-        t = p["thickness"]
-        lvl = p["line_level"]
-        img[0:t, :, :] = lvl
-        img[-t:, :, :] = lvl
-        img[:, 0:t, :] = lvl
-        img[:, -t:, :] = lvl
-        return finalize_signal(
-            img,
-            color_space=p["color_space"],
-            transfer_function=p["transfer_function"],
-            signal_range=p["signal_range"],
-        )
 
 
 @register
