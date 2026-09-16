@@ -4,6 +4,20 @@ import { ParameterControls } from "./components/ParameterControls";
 import { PatternPreview } from "./components/PatternPreview";
 import type { ImageFormat, ParamValues, Pattern } from "./types";
 
+const ASPECT_RATIO_ID = "aspect-ratio";
+const ASPECT_RATIO_CONTAINERS: Record<string, { w: number; h: number }> = {
+  "dci-2k-full": { w: 2048, h: 1080 },
+  "dci-2k-flat": { w: 1998, h: 1080 },
+  "dci-2k-scope": { w: 2048, h: 858 },
+  "dci-4k-full": { w: 4096, h: 2160 },
+  "dci-4k-flat": { w: 3996, h: 2160 },
+  "dci-4k-scope": { w: 4096, h: 1716 },
+  "uhd-4k": { w: 3840, h: 2160 },
+  "dci-8k": { w: 8192, h: 4320 },
+  "uhd-8k": { w: 7680, h: 4320 },
+  "1080p": { w: 1920, h: 1080 },
+};
+
 const RESOLUTIONS: { label: string; w: number; h: number }[] = [
   { label: "HD 1920×1080", w: 1920, h: 1080 },
   { label: "UHD 3840×2160", w: 3840, h: 2160 },
@@ -80,6 +94,7 @@ export function App() {
     [patterns, selectedId],
   );
   const isAudio = selected?.kind === "audio";
+  const isAspectRatio = selected?.id === ASPECT_RATIO_ID;
   const currentFormat = useMemo(
     () => formats.find((f) => f.id === formatId) ?? null,
     [formats, formatId],
@@ -100,6 +115,14 @@ export function App() {
   useEffect(() => {
     if (selected) setParams(defaultParams(selected));
   }, [selected]);
+
+  useEffect(() => {
+    if (!isAspectRatio) return;
+    const size = ASPECT_RATIO_CONTAINERS[String(params.container ?? "1080p")];
+    if (!size) return;
+    setWidth(size.w);
+    setHeight(size.h);
+  }, [isAspectRatio, params.container]);
 
   useEffect(() => {
     if (!currentFormat) return;
@@ -297,47 +320,51 @@ export function App() {
             {!isAudio && (
               <>
                 <h2>Output</h2>
-                <div className="field">
-                  <label>Resolution</label>
-                  <select
-                    value={`${width}x${height}`}
-                    onChange={(e) => {
-                      const preset = RESOLUTIONS.find((r) => `${r.w}x${r.h}` === e.target.value);
-                      if (preset) {
-                        setWidth(preset.w);
-                        setHeight(preset.h);
-                      }
-                    }}
-                  >
-                    {RESOLUTIONS.map((r) => (
-                      <option key={r.label} value={`${r.w}x${r.h}`}>
-                        {r.label}
-                      </option>
-                    ))}
-                    {!RESOLUTIONS.some((r) => r.w === width && r.h === height) && (
-                      <option value={`${width}x${height}`}>
-                        Custom {width}×{height}
-                      </option>
-                    )}
-                  </select>
-                </div>
-                <div className="field range-row">
-                  <input
-                    type="number"
-                    value={width}
-                    min={1}
-                    max={16384}
-                    onChange={(e) => setWidth(Number(e.target.value))}
-                  />
-                  <span className="times">×</span>
-                  <input
-                    type="number"
-                    value={height}
-                    min={1}
-                    max={16384}
-                    onChange={(e) => setHeight(Number(e.target.value))}
-                  />
-                </div>
+                {!isAspectRatio && (
+                  <>
+                    <div className="field">
+                      <label>Resolution</label>
+                      <select
+                        value={`${width}x${height}`}
+                        onChange={(e) => {
+                          const preset = RESOLUTIONS.find((r) => `${r.w}x${r.h}` === e.target.value);
+                          if (preset) {
+                            setWidth(preset.w);
+                            setHeight(preset.h);
+                          }
+                        }}
+                      >
+                        {RESOLUTIONS.map((r) => (
+                          <option key={r.label} value={`${r.w}x${r.h}`}>
+                            {r.label}
+                          </option>
+                        ))}
+                        {!RESOLUTIONS.some((r) => r.w === width && r.h === height) && (
+                          <option value={`${width}x${height}`}>
+                            Custom {width}×{height}
+                          </option>
+                        )}
+                      </select>
+                    </div>
+                    <div className="field range-row">
+                      <input
+                        type="number"
+                        value={width}
+                        min={1}
+                        max={16384}
+                        onChange={(e) => setWidth(Number(e.target.value))}
+                      />
+                      <span className="times">×</span>
+                      <input
+                        type="number"
+                        value={height}
+                        min={1}
+                        max={16384}
+                        onChange={(e) => setHeight(Number(e.target.value))}
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="field">
                   <label>Format</label>

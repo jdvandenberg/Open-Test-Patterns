@@ -7,6 +7,7 @@ from __future__ import annotations
 
 # Importing the modules below has the side effect of registering their patterns.
 from . import (
+    aspect_ratio,  # noqa: E402,F401
     colorbars,  # noqa: E402,F401
     colorchecker,  # noqa: E402,F401
     geometry,  # noqa: E402,F401
