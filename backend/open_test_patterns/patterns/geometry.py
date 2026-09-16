@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from .base import Parameter, ParamType, Pattern, PatternResult
+from .base import DisabledWhen, Parameter, ParamType, Pattern, PatternResult
 from .registry import register
 from .util import canvas, colorspace_param, finalize_signal, range_param, transfer_param
 
@@ -39,6 +39,24 @@ def _thickness_param() -> Parameter:
     return Parameter(
         "thickness", "Line thickness", ParamType.INT, default=1, minimum=1, maximum=32, unit="px"
     )
+
+
+def _stroke_circle(
+    img: np.ndarray,
+    *,
+    cx: float,
+    cy: float,
+    radius: float,
+    thickness: int,
+    level: float,
+) -> None:
+    """Paint a ring of ``thickness`` pixels centred on ``(cx, cy)``."""
+    height, width = img.shape[:2]
+    yy, xx = np.ogrid[:height, :width]
+    dist = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
+    half = thickness / 2.0
+    mask = (dist >= max(radius - half, 0.0)) & (dist < radius + half)
+    img[mask] = level
 
 
 @register
@@ -76,12 +94,38 @@ class GridChart(Pattern):
     id = "grid"
     name = "Alignment Grid"
     category = "Geometry"
-    description = "An evenly spaced grid with a border, for geometry and convergence checks."
+    description = (
+        "An evenly spaced grid with a border, for geometry and convergence checks. "
+        "An optional centred circle is sized as a fraction of frame height."
+    )
     parameters = [
         Parameter("columns", "Columns", ParamType.INT, default=16, minimum=1, maximum=256),
         Parameter("rows", "Rows", ParamType.INT, default=9, minimum=1, maximum=256),
         _line_param(),
         _thickness_param(),
+        Parameter(
+            "circle",
+            "Circle",
+            ParamType.BOOL,
+            default=True,
+            description="Draw a circle at the centre of the frame.",
+        ),
+        Parameter(
+            "circle_diameter",
+            "Circle diameter",
+            ParamType.FLOAT,
+            default=75.0,
+            minimum=1.0,
+            maximum=200.0,
+            step=1.0,
+            unit="%",
+            description="Diameter as a percentage of frame height.",
+            disabled_when=DisabledWhen(
+                parameter="circle",
+                values=("false",),
+                reason="Circle is off.",
+            ),
+        ),
         colorspace_param(),
         transfer_param(default="gamma-2.4"),
         range_param(),
@@ -100,6 +144,15 @@ class GridChart(Pattern):
         for y in ys:
             y0 = min(max(y - t // 2, 0), height - t)
             img[y0 : y0 + t, :, :] = lvl
+        if p["circle"]:
+            _stroke_circle(
+                img,
+                cx=(width - 1) / 2.0,
+                cy=(height - 1) / 2.0,
+                radius=(p["circle_diameter"] / 100.0) * height / 2.0,
+                thickness=t,
+                level=lvl,
+            )
         return finalize_signal(
             img,
             color_space=p["color_space"],
