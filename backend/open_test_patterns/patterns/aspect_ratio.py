@@ -24,6 +24,8 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import OpenImageIO as oiio
+from OpenImageIO import ImageBuf, ImageBufAlgo
 
 from .base import Choice, DisabledWhen, Parameter, ParamType, Pattern, PatternResult
 from .registry import register
@@ -248,6 +250,21 @@ _CIRCLE_OFF = DisabledWhen(
 )
 
 
+def _choice_label(choices: list[Choice], value: str) -> str:
+    for choice in choices:
+        if choice.value == value:
+            return choice.label
+    return value
+
+
+def framing_caption(container: str, ratio: str) -> str:
+    """``1.85 (DCI Flat) within 4K UHD - 3840x2160``."""
+    ratio_label = _choice_label(RATIO_CHOICES, ratio)
+    container_name = _choice_label(CONTAINER_CHOICES, container).split(" — ", 1)[0]
+    width, height = CONTAINERS[container]
+    return f"{ratio_label} within {container_name} - {width}x{height}"
+
+
 def aspect_frame(container: str, ratio: str) -> tuple[int, int]:
     """Return the inner (width, height) for ``container`` × ``ratio``."""
     try:
@@ -435,15 +452,64 @@ def _stroke_third_arrows(
         _fill_arrow(img, x1 - 1, y, dx=-1, dy=0, height=height_x, color=color, clip=clip)
 
 
+def _fit_caption_font(text: str, max_width: int, desired: int) -> tuple[int, Any]:
+    """Shrink ``desired`` until ``text`` fits ``max_width``, returning (size, ROI)."""
+    fontsize = max(int(desired), 12)
+    roi = ImageBufAlgo.text_size(text, fontsize)
+    while fontsize > 12 and (not roi.defined or roi.width > max_width):
+        fontsize = max(12, int(fontsize * 0.9))
+        roi = ImageBufAlgo.text_size(text, fontsize)
+    return fontsize, roi
+
+
+def _draw_caption(
+    img: np.ndarray,
+    text: str,
+    *,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+    color: np.ndarray,
+) -> None:
+    """Paint ``text`` in a black box, centred at 25% up from the inner bottom."""
+    inner_w = x1 - x0
+    inner_h = y1 - y0
+    if inner_w < 64 or inner_h < 48 or not text:
+        return
+    desired = max(14, round(inner_h * 0.035))
+    fontsize, roi = _fit_caption_font(text, max(8, round(inner_w * 0.92)), desired)
+    if not roi.defined:
+        return
+    cx = (x0 + x1 - 1) / 2.0
+    target_cy = y0 + inner_h * 0.75
+    x = int(round(cx - roi.width / 2.0 - roi.xbegin))
+    y = int(round(target_cy - (roi.ybegin + roi.yend) / 2.0))
+    pad_x = max(8, round(fontsize * 0.45))
+    pad_y = max(4, round(fontsize * 0.28))
+    box_x0 = max(x0, x + roi.xbegin - pad_x)
+    box_y0 = max(y0, y + roi.ybegin - pad_y)
+    box_x1 = min(x1, x + roi.xend + pad_x)
+    box_y1 = min(y1, y + roi.yend + pad_y)
+    if box_x1 > box_x0 and box_y1 > box_y0:
+        img[box_y0:box_y1, box_x0:box_x1] = _BLACK
+    fill = (float(color[0]), float(color[1]), float(color[2]))
+    buf = ImageBuf(np.ascontiguousarray(img, dtype=np.float32))
+    if not ImageBufAlgo.render_text(buf, x, y, text, fontsize, "", fill, shadow=0):
+        return
+    img[:] = buf.get_pixels(oiio.FLOAT)
+
+
 @register
 class AspectRatio(Pattern):
     id = "aspect-ratio"
-    name = "Aspect Ratio"
+    name = "Framing / Aspect Ratio"
     category = "Geometry"
     description = (
         "A grey active picture in a locked container, with a border, third-point "
-        "arrows, corner diagonals, and an optional centre circle. Outside the "
-        "chosen aspect is black or red."
+        "arrows, corner diagonals, and an optional centre circle. An optional "
+        "caption names the container and aspect. Outside the chosen aspect is "
+        "black or red."
     )
     parameters = [
         Parameter(
@@ -506,6 +572,13 @@ class AspectRatio(Pattern):
             description="Diameter as a percentage of the active-picture height.",
             disabled_when=_CIRCLE_OFF,
         ),
+        Parameter(
+            "caption",
+            "Caption",
+            ParamType.BOOL,
+            default=True,
+            description="Name the container and aspect ratio below the centre.",
+        ),
         colorspace_param(),
         transfer_param(default="gamma-2.4"),
         range_param(),
@@ -545,6 +618,16 @@ class AspectRatio(Pattern):
                 height_y=_arrow_height(y1 - y0, ih, scale=scale),
                 color=line,
             )
+            if p["caption"]:
+                _draw_caption(
+                    img,
+                    framing_caption(p["container"], p["ratio"]),
+                    x0=x0,
+                    y0=y0,
+                    x1=x1,
+                    y1=y1,
+                    color=line,
+                )
         return finalize_signal(
             img,
             color_space=p["color_space"],

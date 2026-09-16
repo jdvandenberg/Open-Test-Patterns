@@ -1,4 +1,4 @@
-"""Aspect Ratio geometry chart."""
+"""Framing / Aspect Ratio geometry chart."""
 
 import numpy as np
 
@@ -10,12 +10,14 @@ from open_test_patterns.patterns.aspect_ratio import (
     _arrow_height,
     _arrow_scale,
     aspect_frame,
+    framing_caption,
 )
 
 
 def _render(width=None, height=None, **params):
     params.setdefault("transfer_function", "linear")
     params.setdefault("circle", False)
+    params.setdefault("caption", False)
     container = params.get("container", "1080p")
     cw, ch = CONTAINERS[container]
     w = width if width is not None else cw
@@ -25,7 +27,7 @@ def _render(width=None, height=None, **params):
 
 def test_aspect_ratio_is_in_geometry():
     p = P.get_pattern("aspect-ratio")
-    assert p.name == "Aspect Ratio"
+    assert p.name == "Framing / Aspect Ratio"
     assert p.category == "Geometry"
     names = [q.name for q in p.parameters]
     assert names[:2] == ["container", "ratio"]
@@ -33,6 +35,8 @@ def test_aspect_ratio_is_in_geometry():
     assert circle.default is True
     diameter = next(q for q in p.parameters if q.name == "circle_diameter")
     assert diameter.default == 75.0
+    caption = next(q for q in p.parameters if q.name == "caption")
+    assert caption.default is True
 
 
 def test_frame_table_covers_every_container_and_ratio():
@@ -168,6 +172,28 @@ def test_third_arrows_stay_inside_the_active_picture():
     assert np.allclose(img[y_one, x0 - 1], 0.0)
 
 
+def test_caption_names_the_container_and_ratio():
+    assert framing_caption("uhd-4k", "1.85") == "1.85 (DCI Flat) within 4K UHD - 3840x2160"
+    assert framing_caption("1080p", "1.78") == "1.78 (16:9) within 1080p - 1920x1080"
+    assert (
+        framing_caption("dci-2k-full", "2.39")
+        == "2.39 (DCI Scope) within 2K DCI (Full) - 2048x1080"
+    )
+
+
+def test_caption_sits_in_a_black_box_in_the_lower_quarter():
+    labeled = _render(container="1080p", ratio="1.78", caption=True, line_level=1)
+    clean = _render(container="1080p", ratio="1.78", caption=False, line_level=1)
+    # The box is centred 25% up from the bottom of the 1080-tall frame.
+    band = labeled[780:840, 200:1720]
+    clean_band = clean[780:840, 200:1720]
+    assert np.any(band[..., 0] < 0.05)
+    assert np.any(band[..., 0] > 0.8)
+    assert np.any(band[..., 0] != clean_band[..., 0])
+    # Mid-frame, off the diagonals, stays grey.
+    assert np.allclose(labeled[400, 200], [0.5, 0.5, 0.5])
+
+
 def test_catalog_lists_aspect_ratio_under_geometry():
     from fastapi.testclient import TestClient
 
@@ -175,7 +201,7 @@ def test_catalog_lists_aspect_ratio_under_geometry():
 
     data = TestClient(app).get("/api/patterns").json()
     item = next(p for p in data if p["id"] == "aspect-ratio")
-    assert item["name"] == "Aspect Ratio"
+    assert item["name"] == "Framing / Aspect Ratio"
     assert item["category"] == "Geometry"
     names = [q["name"] for q in item["parameters"]]
     assert names[:2] == ["container", "ratio"]
