@@ -4,6 +4,9 @@ Patterns can be authored in wide gamuts and non-display transfer functions (PQ,
 HLG, linear). To show them in a normal web page we decode the code values back
 to light, convert to sRGB, and tone-map HDR down to the display range.
 
+PQ is decoded to cd/m² and mapped onto a 100-nit sRGB display with a highlight
+shoulder, so 100 nits is near-white without slamming every brighter code to 255.
+
 The ``bypass`` transfer function opts out of all of that: its code values are
 shown exactly as authored.
 """
@@ -19,6 +22,45 @@ from OpenImageIO import ImageBuf, ImageBufAlgo, ImageSpec
 
 from ..color import colorspaces, transfer
 from ..patterns.base import PatternResult, SignalRange
+
+# Browser sRGB is treated as a ~100 cd/m² display. 100 nits maps just below
+# 1.0 so a 100-nit ramp still has headroom; light above that follows a
+# Reinhard shoulder toward 1.0 at 10 000 nits instead of clipping to 255.
+_SDR_WHITE_NITS = 100.0
+_SDR_AT_WHITE = 0.90
+_HDR_PEAK_NITS = 10000.0
+_LUMA_709 = np.array([0.2126, 0.7152, 0.0722])
+
+
+def _nits_to_sdr_linear(nits: np.ndarray) -> np.ndarray:
+    """Map absolute cd/m² onto 0–1 linear light for an sRGB page."""
+    nits = np.maximum(np.asarray(nits, dtype=np.float64), 0.0)
+    pivot = _SDR_WHITE_NITS
+    peak = _SDR_AT_WHITE
+    low = nits * (peak / pivot)
+    over = nits - pivot
+    # Asymptote ``peak + (1 - peak)``; 10 000 nits lands near 0.98.
+    width = (_HDR_PEAK_NITS - pivot) * 0.25
+    high = peak + (1.0 - peak) * over / (over + width)
+    return np.where(nits <= pivot, low, np.minimum(high, 1.0))
+
+
+def _tonemap_nits_rgb(rgb_nits: np.ndarray) -> np.ndarray:
+    """Compress PQ light to SDR, preserving chromaticity."""
+    luma = np.tensordot(rgb_nits, _LUMA_709, axes=([-1], [0]))
+    sdr = _nits_to_sdr_linear(luma)
+    scale = sdr / np.maximum(luma, 1e-10)
+    scale = np.where(luma <= 1e-10, 0.0, scale)
+    return rgb_nits * scale[..., None]
+
+
+def _soft_clip_highlights(rgb: np.ndarray) -> np.ndarray:
+    """Leave in-range light alone; roll channels that would clip toward 1.0."""
+    peak = np.max(rgb, axis=-1, keepdims=True)
+    over = np.maximum(peak - 1.0, 0.0)
+    mapped = np.where(peak <= 1.0, peak, 1.0 - 0.02 * over / (over + 1.0))
+    scale = np.divide(mapped, np.maximum(peak, 1e-10))
+    return rgb * scale
 
 
 def to_display_srgb(result: PatternResult) -> np.ndarray:
@@ -37,21 +79,20 @@ def to_display_srgb(result: PatternResult) -> np.ndarray:
         code = transfer.legal_to_full(code)
 
     light = tf.decode(code)
-
-    if tf.is_absolute:
-        # PQ: decoded values are cd/m^2. Normalise by the pattern's peak so the
-        # brightest intended level maps to 1.0 for display.
-        peak = sf.peak_luminance if sf.peak_luminance else 100.0
-        # peak_luminance for absolute patterns is the nits mapped to 1.0.
-        light = light / max(peak, 1e-6)
-
     light = np.clip(light, 0.0, None)
 
-    # Convert to sRGB/Rec.709 linear, then tone-map any remaining overshoot.
     if sf.color_space != "srgb":
         light = colorspaces.RGB_to_RGB(light, sf.color_space, "srgb")
-    light = np.clip(light, 0.0, 1.0)
+        light = np.clip(light, 0.0, None)
 
+    if tf.is_absolute:
+        # PQ decodes to cd/m². Tone-map that onto a 100-nit sRGB display
+        # instead of dividing by the pattern peak and clipping.
+        light = _tonemap_nits_rgb(light)
+    else:
+        light = _soft_clip_highlights(light)
+
+    light = np.clip(light, 0.0, 1.0)
     display = transfer.get_transfer_function("srgb").encode(light)
     return (np.clip(display, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
 
