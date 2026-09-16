@@ -41,10 +41,11 @@ function formatHertz(hz: number): string {
 
 function toneHeadline(params: ParamValues): string {
   const spec = toneSpec(params);
-  if (spec.waveform === "white" || spec.waveform === "pink") {
-    const lo = Math.min(spec.frequency_low, spec.frequency_high);
-    const hi = Math.max(spec.frequency_low, spec.frequency_high);
-    const kind = spec.waveform === "white" ? "White noise" : "Pink noise";
+  if (spec.waveform === "white" || spec.waveform === "pink" || spec.waveform === "sweep") {
+    const lo = spec.waveform === "sweep" ? spec.frequency_low : Math.min(spec.frequency_low, spec.frequency_high);
+    const hi = spec.waveform === "sweep" ? spec.frequency_high : Math.max(spec.frequency_low, spec.frequency_high);
+    const kind =
+      spec.waveform === "white" ? "White noise" : spec.waveform === "pink" ? "Pink noise" : "Sweep";
     return `${kind} ${formatHertz(lo)} – ${formatHertz(hi)}`;
   }
   const labels: Record<string, string> = {

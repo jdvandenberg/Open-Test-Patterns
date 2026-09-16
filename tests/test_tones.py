@@ -12,7 +12,7 @@ from open_test_patterns.audio import generate_tone, tone_filename, wav_bytes
 
 client = TestClient(app)
 
-WAVEFORMS = ("sine", "triangle", "sawtooth", "square", "white", "pink")
+WAVEFORMS = ("sine", "triangle", "sawtooth", "square", "sweep", "white", "pink")
 
 
 def _mid_peak_dbfs(samples: np.ndarray) -> float:
@@ -106,6 +106,47 @@ def test_noise_is_band_limited():
     assert in_band > 20 * out_band
 
 
+def _zero_crossing_hz(samples: np.ndarray, sample_rate: int) -> float:
+    crossings = int(np.sum(np.diff(np.signbit(samples))))
+    return crossings / (2.0 * len(samples) / sample_rate)
+
+
+def test_sweep_ramps_over_the_clip():
+    sr = 48_000
+    samples = generate_tone(
+        duration=0.5,
+        loudness=0,
+        waveform="sweep",
+        frequency_low=200,
+        frequency_high=2000,
+    )
+    fade = int(0.01 * sr)
+    start = _zero_crossing_hz(samples[fade : fade + sr // 10], sr)
+    end = _zero_crossing_hz(samples[-(fade + sr // 10) : -fade], sr)
+    assert 150 < start < 500
+    assert 1500 < end < 2200
+    assert end > start * 3
+
+
+def test_sweep_matches_linear_chirp():
+    sr = 48_000
+    duration = 0.2
+    f0, f1 = 100.0, 400.0
+    samples = generate_tone(
+        duration=duration,
+        loudness=0,
+        waveform="sweep",
+        frequency_low=f0,
+        frequency_high=f1,
+    )
+    n = int(round(sr * duration))
+    t = np.arange(n, dtype=np.float64) / sr
+    slope = (f1 - f0) / duration
+    expected = np.sin(2 * math.pi * (f0 * t + 0.5 * slope * t * t))
+    mid = slice(int(0.01 * sr), -int(0.01 * sr))
+    assert np.allclose(samples[mid], expected[mid], atol=1e-9)
+
+
 def test_tone_catalog_lists_waveforms():
     data = client.get("/api/patterns").json()
     tone = next(p for p in data if p["id"] == "sine-tone")
@@ -124,7 +165,7 @@ def test_tone_catalog_lists_waveforms():
     waveform = next(p for p in tone["parameters"] if p["name"] == "waveform")
     assert {c["value"] for c in waveform["choices"]} == set(WAVEFORMS)
     freq = next(p for p in tone["parameters"] if p["name"] == "frequency")
-    assert freq["disabled_when"][0]["values"] == ["white", "pink"]
+    assert set(freq["disabled_when"][0]["values"]) == {"sweep", "white", "pink"}
     low = next(p for p in tone["parameters"] if p["name"] == "frequency_low")
     high = next(p for p in tone["parameters"] if p["name"] == "frequency_high")
     assert low["default"] == 20
@@ -169,6 +210,19 @@ def test_tone_download_square_and_pink_filenames():
     assert pink.status_code == 200
     assert "Pink_Noise_20-20000Hz_0.1s_-18dBFS.wav" in pink.headers["content-disposition"]
 
+    sweep = client.post(
+        "/api/tone",
+        json={
+            "waveform": "sweep",
+            "frequency_low": 20,
+            "frequency_high": 20_000,
+            "duration": 0.1,
+            "loudness": -18,
+        },
+    )
+    assert sweep.status_code == 200
+    assert "Sweep_20-20000Hz_0.1s_-18dBFS.wav" in sweep.headers["content-disposition"]
+
 
 def test_unknown_waveform_rejected():
     r = client.post("/api/tone", json={"waveform": "chirp"})
@@ -182,6 +236,10 @@ def test_tone_filename():
     assert (
         tone_filename(440, 5, -20, "pink", frequency_low=100, frequency_high=8000)
         == "Pink_Noise_100-8000Hz_5s_-20dBFS.wav"
+    )
+    assert (
+        tone_filename(440, 5, -20, "sweep", frequency_low=20, frequency_high=20_000)
+        == "Sweep_20-20000Hz_5s_-20dBFS.wav"
     )
 
 

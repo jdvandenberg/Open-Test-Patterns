@@ -88,6 +88,9 @@ export function toneFilename(spec: ToneSpec): string {
     const { lo, hi } = noiseBand(spec);
     return `${kind}_Noise_${lo}-${hi}Hz_${spec.duration}s_${spec.loudness}dBFS.wav`;
   }
+  if (spec.waveform === "sweep") {
+    return `Sweep_${spec.frequency_low}-${spec.frequency_high}Hz_${spec.duration}s_${spec.loudness}dBFS.wav`;
+  }
   return `${kind}_${spec.frequency}Hz_${spec.duration}s_${spec.loudness}dBFS.wav`;
 }
 

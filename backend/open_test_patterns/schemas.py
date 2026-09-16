@@ -118,6 +118,6 @@ class ToneRequest(BaseModel):
     frequency: float = Field(default=440.0, gt=0, le=20_000)
     duration: float = Field(default=5.0, gt=0, le=60)
     loudness: float = Field(default=-20.0, le=0, ge=-60)
-    waveform: Literal["sine", "triangle", "sawtooth", "square", "white", "pink"] = "sine"
+    waveform: Literal["sine", "triangle", "sawtooth", "square", "sweep", "white", "pink"] = "sine"
     frequency_low: float = Field(default=20.0, gt=0, le=20_000)
     frequency_high: float = Field(default=20_000.0, gt=0, le=20_000)

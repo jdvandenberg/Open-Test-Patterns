@@ -35,20 +35,20 @@ def main() -> int:
     parser.add_argument(
         "--waveform",
         default="sine",
-        choices=["sine", "triangle", "sawtooth", "square", "white", "pink"],
-        help="Waveform or noise type (default: sine)",
+        choices=["sine", "triangle", "sawtooth", "square", "sweep", "white", "pink"],
+        help="Waveform, sweep, or noise type (default: sine)",
     )
     parser.add_argument(
         "--frequency-low",
         type=float,
         default=20.0,
-        help="Noise band lower edge in Hz (default: 20)",
+        help="Sweep start or noise-band lower edge in Hz (default: 20)",
     )
     parser.add_argument(
         "--frequency-high",
         type=float,
         default=20_000.0,
-        help="Noise band upper edge in Hz (default: 20000)",
+        help="Sweep end or noise-band upper edge in Hz (default: 20000)",
     )
     parser.add_argument("-o", "--output", default="tone.wav", help="Output WAV path")
     args = parser.parse_args()

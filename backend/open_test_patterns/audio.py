@@ -20,8 +20,8 @@ SINE_TONE_ID = "sine-tone"
 SINE_TONE_NAME = "Test Tone"
 SINE_TONE_CATEGORY = "Audio"
 SINE_TONE_DESCRIPTION = (
-    "Sine, triangle, sawtooth, and square tones, plus band-limited white and "
-    "pink noise, at a chosen duration and peak level (dBFS)."
+    "Sine, triangle, sawtooth, square, and linear frequency sweeps, plus "
+    "band-limited white and pink noise, at a chosen duration and peak level (dBFS)."
 )
 
 WAVEFORMS = (
@@ -29,20 +29,22 @@ WAVEFORMS = (
     Choice("triangle", "Triangle"),
     Choice("sawtooth", "Sawtooth"),
     Choice("square", "Square"),
+    Choice("sweep", "Sweep"),
     Choice("white", "White noise"),
     Choice("pink", "Pink noise"),
 )
 WAVEFORM_IDS = tuple(c.value for c in WAVEFORMS)
 _NOISE = frozenset({"white", "pink"})
-_TONES = tuple(w for w in WAVEFORM_IDS if w not in _NOISE)
-_NOISE_DISABLES_FREQUENCY = DisabledWhen(
+_RANGE = frozenset({"sweep", "white", "pink"})
+_FIXED_TONES = tuple(w for w in WAVEFORM_IDS if w not in _RANGE)
+_RANGE_DISABLES_FREQUENCY = DisabledWhen(
     parameter="waveform",
-    values=("white", "pink"),
-    reason="Noise uses a frequency range, not a single tone.",
+    values=("sweep", "white", "pink"),
+    reason="This waveform uses a frequency range, not a single tone.",
 )
 _TONE_DISABLES_BAND = DisabledWhen(
     parameter="waveform",
-    values=_TONES,
+    values=_FIXED_TONES,
     reason="Periodic tones use a single frequency.",
 )
 
@@ -65,7 +67,7 @@ def sine_tone_parameters() -> list[Parameter]:
             maximum=20_000.0,
             step=1.0,
             unit="Hz",
-            disabled_when=_NOISE_DISABLES_FREQUENCY,
+            disabled_when=_RANGE_DISABLES_FREQUENCY,
         ),
         Parameter(
             "frequency_low",
@@ -77,7 +79,7 @@ def sine_tone_parameters() -> list[Parameter]:
             step=1.0,
             unit="Hz",
             disabled_when=_TONE_DISABLES_BAND,
-            description="Lower edge of the noise band.",
+            description="Sweep start, or the lower edge of the noise band.",
         ),
         Parameter(
             "frequency_high",
@@ -89,7 +91,7 @@ def sine_tone_parameters() -> list[Parameter]:
             step=1.0,
             unit="Hz",
             disabled_when=_TONE_DISABLES_BAND,
-            description="Upper edge of the noise band.",
+            description="Sweep end, or the upper edge of the noise band.",
         ),
         Parameter(
             "duration",
@@ -180,6 +182,23 @@ def _band_limited_noise(
     return np.fft.irfft(spec, n=n)
 
 
+def _linear_sweep(n: int, sample_rate: int, f0: float, f1: float) -> np.ndarray:
+    """Sine whose instantaneous frequency ramps from ``f0`` to ``f1`` over the clip."""
+    t = np.arange(n, dtype=np.float64) / sample_rate
+    duration = n / sample_rate
+    slope = (f1 - f0) / duration
+    phase = 2 * math.pi * (f0 * t + 0.5 * slope * t * t)
+    return np.sin(phase)
+
+
+def _require_below_nyquist(freq: float, sample_rate: int, name: str) -> None:
+    if freq <= 0:
+        raise ValueError(f"{name} must be positive")
+    nyquist = sample_rate / 2.0
+    if freq >= nyquist:
+        raise ValueError(f"{name} must be below Nyquist ({nyquist:g} Hz)")
+
+
 def generate_tone(
     frequency: float = 440.0,
     duration: float = 5.0,
@@ -211,12 +230,12 @@ def generate_tone(
             pink=waveform == "pink",
             rng=rng,
         )
+    elif waveform == "sweep":
+        _require_below_nyquist(frequency_low, sample_rate, "low frequency")
+        _require_below_nyquist(frequency_high, sample_rate, "high frequency")
+        unit = _linear_sweep(n, sample_rate, frequency_low, frequency_high)
     else:
-        if frequency <= 0:
-            raise ValueError("frequency must be positive")
-        nyquist = sample_rate / 2.0
-        if frequency >= nyquist:
-            raise ValueError(f"frequency must be below Nyquist ({nyquist:g} Hz)")
+        _require_below_nyquist(frequency, sample_rate, "frequency")
         t = np.arange(n, dtype=np.float64) / sample_rate
         unit = _periodic(waveform, frequency, t)
 
@@ -259,6 +278,11 @@ def tone_filename(
         lo, hi = _noise_band(frequency_low, frequency_high, SAMPLE_RATE)
         return (
             f"{waveform.capitalize()}_Noise_{lo:g}-{hi:g}Hz_"
+            f"{duration:g}s_{loudness:g}dBFS.wav"
+        )
+    if waveform == "sweep":
+        return (
+            f"Sweep_{frequency_low:g}-{frequency_high:g}Hz_"
             f"{duration:g}s_{loudness:g}dBFS.wav"
         )
     return f"{waveform.capitalize()}_{frequency:g}Hz_{duration:g}s_{loudness:g}dBFS.wav"
