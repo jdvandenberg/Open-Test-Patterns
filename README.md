@@ -12,6 +12,36 @@ production formats (OpenEXR, DPX, TIFF, PNG).
 The web UI is available at
 [https://open-test-patterns.onrender.com](https://open-test-patterns.onrender.com).
 
+## Motivation
+
+Most published test patterns exist as one of two things: a description and
+table of values in a standards document (SMPTE, ITU-R, ARIB), or a
+vendor-authored artifact (a Blu-ray disc, a proprietary hardware generator).
+The Open Test Patterns initiative aims to close that gap for a broader set of
+patterns, formats, and colorimetries.
+
+Why a generator rather than a library of pre-rendered files:
+
+- **Resolution, frame rate, file format, and color space agnostic.** A
+  generator produces exactly what a given pipeline needs (e.g., an 8K color
+  bars chart encoded in Rec.2100 PQ) instead of shipping hundreds of pre-baked
+  permutations and hoping the one you need is in the set.
+- **Easily extensible.** Adding a new pattern, colorimetry, or transfer
+  function is a matter of writing a new generator against a typed parameter
+  schema, not re-authoring a disc image or re-running a closed toolchain.
+- **Lightweight.** Patterns render on-demand, on-prem or in CI, without needing
+  to distribute or archive large pre-rendered asset sets.
+- **Reliable, inspectable targets.** Code values are hard-coded where the
+  governing standard specifies them (e.g. exact 10-/12-bit Y'CbCr integers from
+  SMPTE RP 219-2 Annex A/B), rather than derived from floating-point math and
+  rounded at render time. That way, the same input always produces the same,
+  independently verifiable output.
+- **Built on trusted, existing open-source foundations.** Color science,
+  transforms, and I/O are delegated to established libraries (colour-science,
+  OpenColorIO-compatible transfer functions, OpenImageIO) rather than
+  reimplemented, so correctness rests on widely-used, independently audited
+  code rather than a bespoke implementation.
+
 ## Architecture
 
 ```
