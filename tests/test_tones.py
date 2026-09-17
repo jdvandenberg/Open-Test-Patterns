@@ -8,7 +8,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 
 from open_test_patterns.api.app import app
-from open_test_patterns.audio import generate_tone, tone_filename, wav_bytes
+from open_test_patterns.patterns.tones import generate_tone, tone_filename, wav_bytes
 
 client = TestClient(app)
 

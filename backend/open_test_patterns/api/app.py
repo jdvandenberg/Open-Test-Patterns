@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from .. import __version__
-from ..audio import generate_tone, sine_tone_catalog, tone_filename, wav_bytes
+from ..patterns.tones import generate_tone, sine_tone_catalog, tone_filename, wav_bytes
 from ..color import colorspaces, transfer
 from ..imageio import SUPPORTED_FORMATS, render_preview_png, write_image
 from ..patterns import all_patterns, get_pattern

@@ -17,6 +17,7 @@ from . import (
     rp219_2_2016,  # noqa: E402,F401
     solid,  # noqa: E402,F401
     steps,  # noqa: E402,F401
+    tones,  # noqa: E402,F401
     zoneplate,  # noqa: E402,F401
 )
 from .base import (
