@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .patterns.base import Parameter
 
@@ -121,3 +121,13 @@ class ToneRequest(BaseModel):
     waveform: Literal["sine", "triangle", "sawtooth", "square", "sweep", "white", "pink"] = "sine"
     frequency_low: float = Field(default=20.0, gt=0, le=20_000)
     frequency_high: float = Field(default=20_000.0, gt=0, le=20_000)
+    sample_rate: int = Field(default=44_100)
+    bit_depth: Literal["16", "24", "float32"] = "16"
+
+    @field_validator("sample_rate", mode="before")
+    @classmethod
+    def _sample_rate(cls, value: object) -> int:
+        rate = int(str(value))
+        if rate not in {44_100, 48_000, 96_000, 192_000}:
+            raise ValueError("sample_rate must be 44100, 48000, 96000, or 192000")
+        return rate

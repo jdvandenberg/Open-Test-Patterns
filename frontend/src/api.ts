@@ -74,6 +74,8 @@ export interface ToneSpec {
   waveform: string;
   frequency_low: number;
   frequency_high: number;
+  sample_rate: number;
+  bit_depth: string;
 }
 
 function noiseBand(spec: ToneSpec): { lo: number; hi: number } {
@@ -82,16 +84,25 @@ function noiseBand(spec: ToneSpec): { lo: number; hi: number } {
   return { lo, hi };
 }
 
+function rateTag(sampleRate: number): string {
+  return sampleRate === 44100 ? "44.1kHz" : `${sampleRate / 1000}kHz`;
+}
+
+function depthTag(bitDepth: string): string {
+  return bitDepth === "float32" ? "32float" : `${bitDepth}bit`;
+}
+
 export function toneFilename(spec: ToneSpec): string {
   const kind = spec.waveform.charAt(0).toUpperCase() + spec.waveform.slice(1);
+  const suffix = `${spec.duration}s_${spec.loudness}dBFS_${rateTag(spec.sample_rate)}_${depthTag(spec.bit_depth)}.wav`;
   if (spec.waveform === "white" || spec.waveform === "pink") {
     const { lo, hi } = noiseBand(spec);
-    return `${kind}_Noise_${lo}-${hi}Hz_${spec.duration}s_${spec.loudness}dBFS.wav`;
+    return `${kind}_Noise_${lo}-${hi}Hz_${suffix}`;
   }
   if (spec.waveform === "sweep") {
-    return `Sweep_${spec.frequency_low}-${spec.frequency_high}Hz_${spec.duration}s_${spec.loudness}dBFS.wav`;
+    return `Sweep_${spec.frequency_low}-${spec.frequency_high}Hz_${suffix}`;
   }
-  return `${kind}_${spec.frequency}Hz_${spec.duration}s_${spec.loudness}dBFS.wav`;
+  return `${kind}_${spec.frequency}Hz_${suffix}`;
 }
 
 export async function fetchTone(spec: ToneSpec, signal?: AbortSignal): Promise<Blob> {

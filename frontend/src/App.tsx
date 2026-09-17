@@ -41,6 +41,8 @@ function toneSpec(params: ParamValues) {
     frequency_high: Number(params.frequency_high ?? 20_000),
     duration: Number(params.duration ?? 5),
     loudness: Number(params.loudness ?? -20),
+    sample_rate: Number(params.sample_rate ?? 44100),
+    bit_depth: String(params.bit_depth ?? "16"),
   };
 }
 
@@ -51,6 +53,13 @@ function formatHertz(hz: number): string {
     return `${text} kHz`;
   }
   return `${hz} Hz`;
+}
+
+function toneFormatLabel(params: ParamValues): string {
+  const spec = toneSpec(params);
+  const rate = spec.sample_rate === 44100 ? "44.1 kHz" : `${spec.sample_rate / 1000} kHz`;
+  const depth = spec.bit_depth === "float32" ? "32-bit float" : `${spec.bit_depth}-bit`;
+  return `${spec.duration} s · ${spec.loudness} dBFS · ${rate} · ${depth}`;
 }
 
 function toneHeadline(params: ParamValues): string {
@@ -165,7 +174,7 @@ export function App() {
       abortRef.current = controller;
       setLoading(true);
       setError(null);
-      fetchTone(toneSpec(params), controller.signal)
+      fetchTone({ ...toneSpec(params), bit_depth: "16" }, controller.signal)
         .then((blob) => {
           setPreviewUrl((old) => {
             if (old) URL.revokeObjectURL(old);
@@ -277,7 +286,7 @@ export function App() {
               <div className="audio-preview">
                 <div className="audio-hz">{toneHeadline(params)}</div>
                 <div className="audio-meta">
-                  {toneSpec(params).duration} s · {toneSpec(params).loudness} dBFS
+                  {toneFormatLabel(params)}
                 </div>
                 <audio key={previewUrl} controls src={previewUrl} />
               </div>

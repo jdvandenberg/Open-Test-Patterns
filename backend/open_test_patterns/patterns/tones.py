@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import io
 import math
-import wave
+import struct
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +12,9 @@ import numpy as np
 
 from .base import Choice, DisabledWhen, Parameter, ParamType
 
-SAMPLE_RATE = 48_000
+SAMPLE_RATE = 44_100
+SAMPLE_RATES = (44_100, 48_000, 96_000, 192_000)
+BIT_DEPTHS = ("16", "24", "float32")
 FADE_SEC = 0.01
 MAX_DURATION = 60.0
 
@@ -115,6 +116,29 @@ def sine_tone_parameters() -> list[Parameter]:
             unit="dBFS",
             description="Peak sample level relative to digital full scale.",
         ),
+        Parameter(
+            "sample_rate",
+            "Sample rate",
+            ParamType.CHOICE,
+            default="44100",
+            choices=[
+                Choice("44100", "44.1 kHz"),
+                Choice("48000", "48 kHz"),
+                Choice("96000", "96 kHz"),
+                Choice("192000", "192 kHz"),
+            ],
+        ),
+        Parameter(
+            "bit_depth",
+            "Bit depth",
+            ParamType.CHOICE,
+            default="16",
+            choices=[
+                Choice("16", "16-bit"),
+                Choice("24", "24-bit"),
+                Choice("float32", "32-bit float"),
+            ],
+        ),
     ]
 
 
@@ -213,6 +237,9 @@ def generate_tone(
     """Return mono samples in ``[-1, 1]`` peaked at ``loudness`` dBFS."""
     if waveform not in WAVEFORM_IDS:
         raise ValueError(f"waveform must be one of {WAVEFORM_IDS}")
+    sample_rate = int(sample_rate)
+    if sample_rate not in SAMPLE_RATES:
+        raise ValueError(f"sample_rate must be one of {SAMPLE_RATES}")
     if duration <= 0:
         raise ValueError("duration must be positive")
     if duration > MAX_DURATION:
@@ -252,19 +279,78 @@ def generate_tone(
     return peak * (unit / peak_u)
 
 
-def wav_bytes(samples: np.ndarray, sample_rate: int = SAMPLE_RATE) -> bytes:
-    pcm = np.clip(np.rint(samples * 32767.0), -32768, 32767).astype(np.int16)
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-        wav.writeframes(pcm.tobytes())
-    return buf.getvalue()
+def _pcm_frames(samples: np.ndarray, bit_depth: str) -> tuple[bytes, int, int]:
+    """Pack ``[-1, 1]`` samples. Returns ``(payload, bytes_per_sample, wav_format)``.
+
+    ``wav_format`` is 1 for integer PCM and 3 for IEEE float.
+    """
+    if bit_depth not in BIT_DEPTHS:
+        raise ValueError(f"bit_depth must be one of {BIT_DEPTHS}")
+    x = np.clip(np.asarray(samples, dtype=np.float64), -1.0, 1.0)
+    if bit_depth == "16":
+        pcm = np.clip(np.rint(x * 32767.0), -32768, 32767).astype("<i2")
+        return pcm.tobytes(), 2, 1
+    if bit_depth == "24":
+        ints = np.clip(np.rint(x * 8388607.0), -8388608, 8388607).astype("<i4")
+        packed = ints.view(np.uint8).reshape(-1, 4)[:, :3].copy()
+        return packed.tobytes(), 3, 1
+    return x.astype("<f4").tobytes(), 4, 3
 
 
-def write_wav(path: str | Path, samples: np.ndarray, sample_rate: int = SAMPLE_RATE) -> None:
-    Path(path).write_bytes(wav_bytes(samples, sample_rate))
+def wav_bytes(
+    samples: np.ndarray,
+    sample_rate: int = SAMPLE_RATE,
+    bit_depth: str = "16",
+) -> bytes:
+    sample_rate = int(sample_rate)
+    if sample_rate not in SAMPLE_RATES:
+        raise ValueError(f"sample_rate must be one of {SAMPLE_RATES}")
+    frames, sampwidth, audio_format = _pcm_frames(samples, bit_depth)
+    nchannels = 1
+    block_align = nchannels * sampwidth
+    byte_rate = sample_rate * block_align
+    bits = sampwidth * 8
+    if audio_format == 1:
+        fmt = struct.pack(
+            "<HHIIHH", audio_format, nchannels, sample_rate, byte_rate, block_align, bits
+        )
+    else:
+        # WAVE_FORMAT_IEEE_FLOAT: 18-byte fmt with cbSize=0.
+        fmt = struct.pack(
+            "<HHIIHHH",
+            audio_format,
+            nchannels,
+            sample_rate,
+            byte_rate,
+            block_align,
+            bits,
+            0,
+        )
+    fmt_chunk = b"fmt " + struct.pack("<I", len(fmt)) + fmt
+    data_chunk = b"data" + struct.pack("<I", len(frames)) + frames
+    riff_size = 4 + len(fmt_chunk) + len(data_chunk)
+    return b"RIFF" + struct.pack("<I", riff_size) + b"WAVE" + fmt_chunk + data_chunk
+
+
+def write_wav(
+    path: str | Path,
+    samples: np.ndarray,
+    sample_rate: int = SAMPLE_RATE,
+    bit_depth: str = "16",
+) -> None:
+    Path(path).write_bytes(wav_bytes(samples, sample_rate, bit_depth))
+
+
+def _rate_tag(sample_rate: int) -> str:
+    if sample_rate == 44_100:
+        return "44.1kHz"
+    return f"{sample_rate // 1000}kHz"
+
+
+def _depth_tag(bit_depth: str) -> str:
+    if bit_depth == "float32":
+        return "32float"
+    return f"{bit_depth}bit"
 
 
 def tone_filename(
@@ -274,19 +360,17 @@ def tone_filename(
     waveform: str = "sine",
     frequency_low: float = 20.0,
     frequency_high: float = 20_000.0,
+    sample_rate: int = SAMPLE_RATE,
+    bit_depth: str = "16",
 ) -> str:
+    sample_rate = int(sample_rate)
+    suffix = f"{duration:g}s_{loudness:g}dBFS_{_rate_tag(sample_rate)}_{_depth_tag(bit_depth)}.wav"
     if waveform in _NOISE:
-        lo, hi = _noise_band(frequency_low, frequency_high, SAMPLE_RATE)
-        return (
-            f"{waveform.capitalize()}_Noise_{lo:g}-{hi:g}Hz_"
-            f"{duration:g}s_{loudness:g}dBFS.wav"
-        )
+        lo, hi = _noise_band(frequency_low, frequency_high, sample_rate)
+        return f"{waveform.capitalize()}_Noise_{lo:g}-{hi:g}Hz_{suffix}"
     if waveform == "sweep":
-        return (
-            f"Sweep_{frequency_low:g}-{frequency_high:g}Hz_"
-            f"{duration:g}s_{loudness:g}dBFS.wav"
-        )
-    return f"{waveform.capitalize()}_{frequency:g}Hz_{duration:g}s_{loudness:g}dBFS.wav"
+        return f"Sweep_{frequency_low:g}-{frequency_high:g}Hz_{suffix}"
+    return f"{waveform.capitalize()}_{frequency:g}Hz_{suffix}"
 
 
 def main() -> int:
@@ -328,17 +412,31 @@ def main() -> int:
         default=20_000.0,
         help="Sweep end or noise-band upper edge in Hz (default: 20000)",
     )
+    parser.add_argument(
+        "--sample-rate",
+        type=int,
+        default=SAMPLE_RATE,
+        choices=list(SAMPLE_RATES),
+        help="Sample rate in Hz (default: 44100)",
+    )
+    parser.add_argument(
+        "--bit-depth",
+        default="16",
+        choices=list(BIT_DEPTHS),
+        help="WAV sample format (default: 16)",
+    )
     parser.add_argument("-o", "--output", default="tone.wav", help="Output WAV path")
     args = parser.parse_args()
     samples = generate_tone(
         args.frequency,
         args.duration,
         args.loudness,
+        sample_rate=args.sample_rate,
         waveform=args.waveform,
         frequency_low=args.frequency_low,
         frequency_high=args.frequency_high,
     )
-    write_wav(args.output, samples)
+    write_wav(args.output, samples, args.sample_rate, args.bit_depth)
     print(f"Wrote {args.output}")
     return 0
 

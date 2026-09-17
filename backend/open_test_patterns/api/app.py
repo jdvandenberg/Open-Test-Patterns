@@ -218,6 +218,7 @@ def tone(req: ToneRequest) -> Response:
             req.frequency,
             req.duration,
             req.loudness,
+            sample_rate=req.sample_rate,
             waveform=req.waveform,
             frequency_low=req.frequency_low,
             frequency_high=req.frequency_high,
@@ -231,9 +232,11 @@ def tone(req: ToneRequest) -> Response:
         req.waveform,
         req.frequency_low,
         req.frequency_high,
+        req.sample_rate,
+        req.bit_depth,
     )
     return Response(
-        content=wav_bytes(samples),
+        content=wav_bytes(samples, req.sample_rate, req.bit_depth),
         media_type="audio/wav",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
